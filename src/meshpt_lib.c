@@ -196,6 +196,9 @@ int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
         }
     }
 
+    /* Free memory */
+    free(box);
+
     /* Destroy structures no longer needed */
     fftw_destroy_plan(c2r_alt);
     fftw_destroy_plan(r2c);
@@ -250,7 +253,7 @@ int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
     // fftw_destroy_plan(c2r);
 
     /* Reset the box array */
-    memset(box, 0, N*N*N*sizeof(double));
+    memset(grid, 0, N*N*N*sizeof(double));
 
     /* Compute the density grid by CIC mass assignment */
     double fac = N/boxlen;
@@ -281,7 +284,7 @@ int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
                             double part_y = yy <= 1 ? 1 - yy : 0;
                             double part_z = zz <= 1 ? 1 - zz : 0;
 
-                            box[row_major(iX+i, iY+j, iZ+k, N)] += 1.0 * part_x * part_y * part_z;
+                            grid[row_major(iX+i, iY+j, iZ+k, N)] += 1.0 * part_x * part_y * part_z;
                         }
                     }
                 }
@@ -289,6 +292,9 @@ int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
         }
     }
 
+    free(psi_x);
+    free(psi_y);
+    free(psi_z);
 
 
     /* The decomposition of every cube into 6 tetrahedra is via */
@@ -369,11 +375,9 @@ int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
     // }
 
 
-    /* Copy over into the output grid */
-    memcpy(grid, box, N*N*N*sizeof(double));
+    // /* Copy over into the output grid */
+    // memcpy(grid, box, N*N*N*sizeof(double));
 
-    /* Free memory */
-    free(box);
 
     /* Clean up the spline */
     cleanPowerSpline(&spline);

@@ -5,7 +5,7 @@ from classy import Class
 import h5py
 
 N = 256
-L = 64.0
+L = 128.0
 bins = 50;
 
 k_nyq = np.pi * N / L;
@@ -57,6 +57,7 @@ for sample in range(M):
         params = {
             'output': 'mPk,dTk',
             'A_s': A_s,
+            # 'sigma8': 0.8382943698850669,
             'n_s': n_s,
             'k_pivot': k_pivot,
             'h': h,
