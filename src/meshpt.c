@@ -266,3 +266,177 @@ int main() {
 
     return 0;
 }
+
+
+int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
+                         double factor, void *kvecv, void *power_linv,
+                         void *gridv) {
+
+    /* The unit mass of one cell */
+    double cell_mass = pow(boxlen / N, 3);
+
+    /* The input data (power spectrum table) */
+    double *kvec = (double *) kvecv;
+    double *Pvec = (double *) power_linv;
+
+    /* Memory block for the output data */
+    double *grid = (double *) gridv;
+
+    /* Initialize power spectrum interpolation sline */
+    struct power_spline spline = {kvec, Pvec, nk};
+    init_power_spline(&spline, 100);
+
+    /* Seed the random number generator */
+    rng_state seed = rand_uint64_init(inseed);
+
+    /* A unique number to prevent filename clashes */
+    int unique = (int)(sampleUniform(&seed) * 1e6);
+
+    /* Allocate array for the primordial Gaussian field */
+    fftw_complex *fbox = malloc(N*N*(N/2+1) * sizeof(fftw_complex));
+    fftw_complex *fbox2 = malloc(N*N*(N/2+1) * sizeof(fftw_complex));
+    double *box = malloc(N*N*N * sizeof(double));
+    /* Generate a complex Hermitian Gaussian random field */
+    generate_complex_grf(fbox, N, boxlen, &seed);
+    enforce_hermiticity(fbox, N, boxlen);
+
+    /* Apply the interpolated power spectrum */
+    fft_apply_kernel(fbox, fbox, N, boxlen, kernel_sqrt_power_spline, &spline);
+
+    /* Apply the smoothing filter */
+    double R_smooth = 1.0;
+    double k_cutoff = 1.0/R_smooth;
+
+    /* Fourier transform the grid */
+    fftw_plan c2r = fftw_plan_dft_c2r_3d(N, N, N, fbox, box, FFTW_ESTIMATE);
+    fft_execute(c2r);
+    fft_normalize_c2r(box, N, boxlen);
+
+    // /* Copy the full nonlinear density field into the output array */
+    // memcpy(grid, box, N*N*N*sizeof(double));
+    //
+    // return 0;
+
+    /* Apply spherical collapse transform */
+    const double alpha = 1.5;
+    for (int i=0; i<N*N*N; i++) {
+        double d = box[i] * factor;
+        // if (d < alpha) {
+        //     d = -3*pow(1-d/alpha, alpha/3)+3;
+        // } else {
+        //     d = 3;
+        // }
+        // grid[i] = d;
+        // grid[i] = d / 1; //ZELDOVICH
+        grid[i] = d - d*d/7; //2LPT-like
+    }
+
+    printf("%f\n", grid[0]);
+
+    /* Fourier transform the grid back */
+    fftw_plan r2c = fftw_plan_dft_r2c_3d(N, N, N, box, fbox, FFTW_ESTIMATE);
+    fft_execute(r2c);
+    fft_normalize_r2c(fbox, N, boxlen);
+
+    /* Prepare a second plan */
+    fftw_plan c2r_alt = fftw_plan_dft_c2r_3d(N, N, N, fbox2, box, FFTW_ESTIMATE);
+
+    /* Free memory */
+    free(box);
+
+    /* Destroy structures no longer needed */
+    fftw_destroy_plan(c2r_alt);
+    fftw_destroy_plan(r2c);
+    free(fbox2);
+
+    /* Fourier transform again (note the different real grid) */
+    fftw_plan r2c2 = fftw_plan_dft_r2c_3d(N, N, N, grid, fbox, FFTW_ESTIMATE);
+    fft_execute(r2c2);
+    fft_normalize_r2c(fbox, N, boxlen);
+
+    /* Approximate the potential with the Zel'dovich approximation */
+    fft_apply_kernel(fbox, fbox, N, boxlen, kernel_inv_poisson, NULL);
+
+    /* Allocate memory for the three displacement grids */
+    fftw_complex *f_psi_x = malloc(N*N*(N/2+1) * sizeof(fftw_complex));
+    fftw_complex *f_psi_y = malloc(N*N*(N/2+1) * sizeof(fftw_complex));
+    fftw_complex *f_psi_z = malloc(N*N*(N/2+1) * sizeof(fftw_complex));
+    double *psi_x = malloc(N*N*N * sizeof(double));
+    double *psi_y = malloc(N*N*N * sizeof(double));
+    double *psi_z = malloc(N*N*N * sizeof(double));
+
+    /* Compute the displacements grids by differentiating the potential */
+    fft_apply_kernel(f_psi_x, fbox, N, boxlen, kernel_dx, NULL);
+    fft_apply_kernel(f_psi_y, fbox, N, boxlen, kernel_dy, NULL);
+    fft_apply_kernel(f_psi_z, fbox, N, boxlen, kernel_dz, NULL);
+
+    /* Fourier transform the potential grids */
+    fftw_plan c2r_x = fftw_plan_dft_c2r_3d(N, N, N, f_psi_x, psi_x, FFTW_ESTIMATE);
+    fftw_plan c2r_y = fftw_plan_dft_c2r_3d(N, N, N, f_psi_y, psi_y, FFTW_ESTIMATE);
+    fftw_plan c2r_z = fftw_plan_dft_c2r_3d(N, N, N, f_psi_z, psi_z, FFTW_ESTIMATE);
+    fft_execute(c2r_x);
+    fft_execute(c2r_y);
+    fft_execute(c2r_z);
+    fft_normalize_c2r(psi_x, N, boxlen);
+    fft_normalize_c2r(psi_y, N, boxlen);
+    fft_normalize_c2r(psi_z, N, boxlen);
+    fftw_destroy_plan(c2r_x);
+    fftw_destroy_plan(c2r_y);
+    fftw_destroy_plan(c2r_z);
+
+    /* Free the complex grids, which are no longer needed */
+    free(fbox);
+    free(f_psi_x);
+    free(f_psi_y);
+    free(f_psi_z);
+
+    /* Reset the box array */
+    memset(grid, 0, N*N*N*sizeof(double));
+
+    /* Compute the density grid by CIC mass assignment */
+    double fac = N/boxlen;
+    for (int x=0; x<N; x++) {
+        for (int y=0; y<N; y++) {
+            for (int z=0; z<N; z++) {
+
+                double dx = psi_x[row_major(x, y, z, N)];
+                double dy = psi_y[row_major(x, y, z, N)];
+                double dz = psi_z[row_major(x, y, z, N)];
+
+                double X = x - dx*fac;
+                double Y = y - dy*fac;
+                double Z = z - dz*fac;
+
+                int iX = (int) floor(X);
+                int iY = (int) floor(Y);
+                int iZ = (int) floor(Z);
+
+                for (int i=-1; i<=1; i++) {
+        			for (int j=-1; j<=1; j++) {
+        				for (int k=-1; k<=1; k++) {
+                            double xx = fabs(X - (iX + i));
+                            double yy = fabs(Y - (iY + j));
+                            double zz = fabs(Z - (iZ + k));
+
+                            double part_x = xx <= 1 ? 1 - xx : 0;
+                            double part_y = yy <= 1 ? 1 - yy : 0;
+                            double part_z = zz <= 1 ? 1 - zz : 0;
+
+                            grid[row_major(iX+i, iY+j, iZ+k, N)] += cell_mass * part_x * part_y * part_z;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    free(psi_x);
+    free(psi_y);
+    free(psi_z);
+
+
+    /* Clean up the spline */
+    free_power_spline(&spline);
+
+    return 1;
+}
