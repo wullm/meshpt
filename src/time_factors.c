@@ -34,10 +34,10 @@ int init_time_factor_table(struct time_factor_table *t, int N_t, int N_f,
     t->N_f = N_f;
     t->table = malloc(N_t * N_f * sizeof(double));
     t->dtable_dt = calloc(N_t * N_f, sizeof(double));
-    t->EdS_factor = malloc(N_f * sizeof(double));
+    t->ic_factor = malloc(N_f * sizeof(double));
     t->time_sampling = malloc(N_t * sizeof(double));
 
-    if (t->table == NULL || t->dtable_dt == NULL || t->EdS_factor == NULL ||
+    if (t->table == NULL || t->dtable_dt == NULL || t->ic_factor == NULL ||
             t->time_sampling == NULL) {
         printf("Error with allocating time factor table.\n");
         return 1;
@@ -59,7 +59,7 @@ int init_time_factor_table(struct time_factor_table *t, int N_t, int N_f,
 int free_time_factor_table(struct time_factor_table *t) {
     free(t->table);
     free(t->dtable_dt);
-    free(t->EdS_factor);
+    free(t->ic_factor);
     free(t->time_sampling);
     return 0;
 }
@@ -71,31 +71,59 @@ int find_time_index(const struct time_factor_table *tab, double t, int *index,
     /* Number of bins */
     int N_t = tab->N_t;
 
-    /* Quickly return if we are in the first or last bin */
-    if (t < tab->time_sampling[0]) {
-        *index = 0;
-        *u = 0.f;
-        return 0;
-    } else if (t >= tab->time_sampling[N_t - 1]) {
-        *index = N_t - 2;
-        *u = 1.f;
-        return 0;
-    }
-
-    /* Find i such that t[i] <= t */
-    for (int i = 1; i < N_t; i++) {
-        if (tab->time_sampling[i] >= t) {
-            *index = i - 1;
-            break;
+    if (tab->time_i > tab->time_f) {
+        /* Quickly return if we are in the first or last bin */
+        if (-t < -tab->time_sampling[0]) {
+            *index = 0;
+            *u = 0.f;
+            return 0;
+        } else if (-t >= -tab->time_sampling[N_t - 1]) {
+            *index = N_t - 2;
+            *u = 1.f;
+            return 0;
         }
+
+        /* Find i such that t[i] <= t */
+        for (int i = 1; i < N_t; i++) {
+            if (-tab->time_sampling[i] >= -t) {
+                *index = i - 1;
+                break;
+            }
+        }
+
+        /* Find the bounding values */
+        double left = -tab->time_sampling[*index];
+        double right = -tab->time_sampling[*index + 1];
+
+        /* Calculate the ratio (X - X_left) / (X_right - X_left) */
+        *u = (-t - left) / (right - left);
+    } else {
+        /* Quickly return if we are in the first or last bin */
+        if (t < tab->time_sampling[0]) {
+            *index = 0;
+            *u = 0.f;
+            return 0;
+        } else if (t >= tab->time_sampling[N_t - 1]) {
+            *index = N_t - 2;
+            *u = 1.f;
+            return 0;
+        }
+
+        /* Find i such that t[i] <= t */
+        for (int i = 1; i < N_t; i++) {
+            if (tab->time_sampling[i] >= t) {
+                *index = i - 1;
+                break;
+            }
+        }
+
+        /* Find the bounding values */
+        double left = tab->time_sampling[*index];
+        double right = tab->time_sampling[*index + 1];
+
+        /* Calculate the ratio (X - X_left) / (X_right - X_left) */
+        *u = (t - left) / (right - left);
     }
-
-    /* Find the bounding values */
-    double left = tab->time_sampling[*index];
-    double right = tab->time_sampling[*index + 1];
-
-    /* Calculate the ratio (X - X_left) / (X_right - X_left) */
-    *u = (t - left) / (right - left);
 
     return 0;
 }
@@ -111,7 +139,7 @@ double interp_time_factor(const struct time_factor_table *tab, double t,
     double left = tab->table[index * tab->N_t + time_index];
     double right = tab->table[index * tab->N_t + (time_index + 1)];
 
-    return u * left + (1 - u) * right;
+    return (1 - u) * left + u * right;
 }
 
 double interp_time_derivative(const struct time_factor_table *tab, double t,
@@ -125,7 +153,7 @@ double interp_time_derivative(const struct time_factor_table *tab, double t,
     double left = tab->dtable_dt[index * tab->N_t + time_index];
     double right = tab->dtable_dt[index * tab->N_t + (time_index + 1)];
 
-    return u * left + (1 - u) * right;
+    return (1 - u) * left + u * right;
 }
 
 struct fluid_equation_params {
@@ -157,15 +185,51 @@ int fluid_equation(double eta, const double y[], double f[], void *pars) {
     f[0] = -(Omega_11 * y[0] + Omega_12 * y[1]);
     f[1] = -(Omega_21 * y[0] + Omega_22 * y[1]);
 
+    /* Add the exponential term n*I*y */
+    f[0] -= fep->n * y[0];
+    f[1] -= fep->n * y[1];
+
     /* Add the source term */
     if (fep->which_equation == CONTINUITY_EQ) {
-        f[0] += factor_1 * factor_2 * D_n;
+        f[0] += factor_1 * factor_2;
     } else if (fep->which_equation == EULER_EQ) {
-        f[1] += factor_1 * factor_2 * D_n;
+        f[1] += factor_1 * factor_2;
     }
 
     return GSL_SUCCESS;
 }
+
+// int fluid_equation_jac(double eta, const double y[], double *dfdy, double
+// dfdt[], void *pars) {
+//     struct fluid_equation_params *fep = (struct fluid_equation_params *)pars;
+//     const struct time_factor_table *t = fep->t;
+//
+//     gsl_matrix_view dfdy_mat = gsl_matrix_view_array (dfdy, 2, 2);
+//     gsl_matrix * m = &dfdy_mat.matrix;
+//
+//     dfdt[0] = 0.0;
+//     dfdt[1] = 0.0;
+//
+//     /* Interpolate the two factors in the source term */
+//     double factor_1 = interp_time_factor(t, eta, fep->index_1);
+//     double factor_2 = interp_time_factor(t, eta, fep->index_2);
+//
+//     /* Interpolate the Omega matrix */
+//     double Omega_11 = interp_time_factor(t, eta, t->index_Om_11);
+//     double Omega_12 = interp_time_factor(t, eta, t->index_Om_11 + 1);
+//     double Omega_21 = interp_time_factor(t, eta, t->index_Om_11 + 2);
+//     double Omega_22 = interp_time_factor(t, eta, t->index_Om_11 + 3);
+//
+//     /* The EdS growth factor at order n */
+//     double D_n = exp(eta * fep->n);
+//
+//     gsl_matrix_set (m, 0, 0, -Omega_11 - fep->n);
+//     gsl_matrix_set (m, 0, 1, -Omega_12);
+//     gsl_matrix_set (m, 1, 0, -Omega_21);
+//     gsl_matrix_set (m, 1, 1, -Omega_22 - fep->n);
+//
+//     return GSL_SUCCESS;
+// }
 
 int integrate_time_factor(struct time_factor_table *tab, char which_equation,
                           int source_index_1, int source_index_2,
@@ -177,16 +241,24 @@ int integrate_time_factor(struct time_factor_table *tab, char which_equation,
                source_index_2, n
     };
 
+    /* Initial step size (allow for integrating in both directions) */
+    double hstart;
+    if (tab->time_i < tab->time_f) {
+        hstart = +1e-10;
+    } else {
+        hstart = -1e-10;
+    }
+
     /* The ODE system to be solved */
     gsl_odeiv2_system sys = {fluid_equation, NULL, dim, &fep};
     gsl_odeiv2_driver *d = gsl_odeiv2_driver_alloc_y_new(
-                               &sys, gsl_odeiv2_step_rk8pd, 1e-6, 1e-6, 0.0);
+                               &sys, gsl_odeiv2_step_rk8pd, hstart, 1e-10, 1e-10);
 
     /* Initial condition (assume EdS) */
     double eta_i = tab->time_i;
     double D_n = exp(eta_i * n);
-    double y_0_EdS = tab->EdS_factor[dest_index_1] * D_n;
-    double y_1_EdS = tab->EdS_factor[dest_index_2] * D_n;
+    double y_0_EdS = tab->ic_factor[dest_index_1];
+    double y_1_EdS = tab->ic_factor[dest_index_2];
     double y[2] = {y_0_EdS, y_1_EdS};
 
     /* Solve the equation at each time step */
@@ -203,8 +275,8 @@ int integrate_time_factor(struct time_factor_table *tab, char which_equation,
         }
 
         /* Store the result */
-        tab->table[dest_index_1 * tab->N_t + i] = y[0] / D_n_next;
-        tab->table[dest_index_2 * tab->N_t + i] = y[1] / D_n_next;
+        tab->table[dest_index_1 * tab->N_t + i] = y[0];
+        tab->table[dest_index_2 * tab->N_t + i] = y[1];
     }
 
     /* Free the driver */
@@ -213,26 +285,56 @@ int integrate_time_factor(struct time_factor_table *tab, char which_equation,
     return 0;
 }
 
-/* Compute the (constant) time factor in the EdS limit */
+/* Compute the (constant) time factor in the EdS limit (modified with variable
+ * Omega_m) */
 int compute_time_factor_EdS(struct time_factor_table *tab, char which_equation,
                             int source_index_1, int source_index_2,
                             int dest_index_1, int dest_index_2, int n) {
 
     /* Constant pre-factor at order n in the EdS limit */
-    double pre_factor = 2.0 / (2 * n + 3) / (n - 1);
+    double pre_factor = 2.0 / (2 * n * n + n - 3);
+
+    printf("prefactor %f\n", pre_factor);
 
     /* Fetch the EdS factors for the source terms */
-    double factor_1 = tab->EdS_factor[source_index_1];
-    double factor_2 = tab->EdS_factor[source_index_2];
+    double factor_1 = tab->ic_factor[source_index_1];
+    double factor_2 = tab->ic_factor[source_index_2];
     double source = factor_1 * factor_2;
 
     /* Store the EdS factors */
     if (which_equation == CONTINUITY_EQ) {
-        tab->EdS_factor[dest_index_1] = pre_factor * source * (n + 0.5);
-        tab->EdS_factor[dest_index_2] = pre_factor * source * 1.5;
+        tab->ic_factor[dest_index_1] = pre_factor * source * (n + 0.5);
+        tab->ic_factor[dest_index_2] = pre_factor * source * 1.5;
     } else if (which_equation == EULER_EQ) {
-        tab->EdS_factor[dest_index_1] = pre_factor * source * 1.0;
-        tab->EdS_factor[dest_index_2] = pre_factor * source * n;
+        tab->ic_factor[dest_index_1] = pre_factor * source * 1.0;
+        tab->ic_factor[dest_index_2] = pre_factor * source * n;
+    }
+
+    return 0;
+}
+
+/* Compute the (constant) time factor in the radiation domination (RD) limit */
+int compute_time_factor_RD(struct time_factor_table *tab, char which_equation,
+                           int source_index_1, int source_index_2,
+                           int dest_index_1, int dest_index_2, int n) {
+
+    /* Constant pre-factor at order n in the RD limit */
+    double pre_factor = 1.0 / (n * n - n);
+
+    printf("prefactor %f\n", pre_factor);
+
+    /* Fetch the RD factors for the source terms */
+    double factor_1 = tab->ic_factor[source_index_1];
+    double factor_2 = tab->ic_factor[source_index_2];
+    double source = factor_1 * factor_2;
+
+    /* Store the RD factors */
+    if (which_equation == CONTINUITY_EQ) {
+        tab->ic_factor[dest_index_1] = pre_factor * source * (n - 1);
+        tab->ic_factor[dest_index_2] = 0;
+    } else if (which_equation == EULER_EQ) {
+        tab->ic_factor[dest_index_1] = pre_factor * source * 1.0;
+        tab->ic_factor[dest_index_2] = pre_factor * source * n;
     }
 
     return 0;
@@ -240,7 +342,7 @@ int compute_time_factor_EdS(struct time_factor_table *tab, char which_equation,
 
 /* Generate time factors at order n from the lower order time factors */
 int generate_time_factors_at_n(struct time_factor_table *tab,
-                               struct coeff_table *c, int n) {
+                               struct coeff_table *c, int n, enum ic_type ic) {
     if (n < 2)
         return 0;
 
@@ -260,10 +362,21 @@ int generate_time_factors_at_n(struct time_factor_table *tab,
                 int dest_index_1 = add_coeff(c, 'c', n, counter);
                 int dest_index_2 = add_coeff(c, 'd', n, counter);
 
-                compute_time_factor_EdS(tab, CONTINUITY_EQ, source_index_1,
-                                        source_index_2, dest_index_1,
-                                        dest_index_2, n);
+                /* Compute the initial conditions */
+                if (ic == EdS) {
+                    compute_time_factor_EdS(tab, CONTINUITY_EQ, source_index_1,
+                                            source_index_2, dest_index_1,
+                                            dest_index_2, n);
+                } else if (ic == RD) {
+                    compute_time_factor_RD(tab, CONTINUITY_EQ, source_index_1,
+                                           source_index_2, dest_index_1,
+                                           dest_index_2, n);
+                } else {
+                    printf("Initial condition type not suppoted.\n");
+                    return 1;
+                }
 
+                /* Integrate the time factors */
                 integrate_time_factor(tab, CONTINUITY_EQ, source_index_1,
                                       source_index_2, dest_index_1,
                                       dest_index_2, n);
@@ -284,10 +397,21 @@ int generate_time_factors_at_n(struct time_factor_table *tab,
                 int dest_index_1 = add_coeff(c, 'c', n, counter);
                 int dest_index_2 = add_coeff(c, 'd', n, counter);
 
-                compute_time_factor_EdS(tab, EULER_EQ, source_index_1,
-                                        source_index_2, dest_index_1,
-                                        dest_index_2, n);
+                /* Compute the initial conditions */
+                if (ic == EdS) {
+                    compute_time_factor_EdS(tab, EULER_EQ, source_index_1,
+                                            source_index_2, dest_index_1,
+                                            dest_index_2, n);
+                } else if (ic == RD) {
+                    compute_time_factor_RD(tab, EULER_EQ, source_index_1,
+                                           source_index_2, dest_index_1,
+                                           dest_index_2, n);
+                } else {
+                    printf("Initial condition type not suppoted.\n");
+                    return 1;
+                }
 
+                /* Integrate the time factors */
                 integrate_time_factor(tab, EULER_EQ, source_index_1,
                                       source_index_2, dest_index_1,
                                       dest_index_2, n);

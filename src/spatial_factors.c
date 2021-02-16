@@ -70,7 +70,7 @@ int generate_spatial_factors_at_n_EdS(struct spatial_factor_table *sft,
         int source_index_3 =
             find_coeff_index_require(spatial_coeffs, 'Y', l, 0);
 
-        printf("Doing %d and %d for %d\n", l, (n-l), n);
+        printf("Doing %d and %d for %d\n", l, (n - l), n);
 
         /* Fetch the input grids */
         fetch_grid(sft, input1, source_index_1);
@@ -98,25 +98,26 @@ int generate_spatial_factors_at_n_EdS(struct spatial_factor_table *sft,
     /* Apply the prefactors for the density grid */
     #pragma omp for
     for (int k = 0; k < N * N * N; k++) {
-        total[k] = prefactor_density_1 * result1[k] + prefactor_density_2 * result2[k];
+        total[k] =
+            prefactor_density_1 * result1[k] + prefactor_density_2 * result2[k];
     }
 
     fftw_complex *fbox = malloc(N * N * (N / 2 + 1) * sizeof(fftw_complex));
 
-    fftw_plan r2c1 =
-        fftw_plan_dft_r2c_3d(N, N, N, total, fbox, FFTW_ESTIMATE);
-    fftw_plan c2r1 =
-        fftw_plan_dft_c2r_3d(N, N, N, fbox, total, FFTW_ESTIMATE);
+    fftw_plan r2c1 = fftw_plan_dft_r2c_3d(N, N, N, total, fbox, FFTW_ESTIMATE);
+    fftw_plan c2r1 = fftw_plan_dft_c2r_3d(N, N, N, fbox, total, FFTW_ESTIMATE);
 
     /* Fourier transform the incoming grids */
-    fft_execute(r2c1);
-    fft_normalize_r2c(fbox, N, boxlen);
-    double k_max = (4./3.) * 0.6737;
-    double R_filter = (10/0.6737);
-    fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass, &k_max);
-    fft_execute(c2r1);
-    fft_normalize_c2r(total, N, boxlen);
-
+    int cutoff = 0;
+    if (cutoff) {
+        fft_execute(r2c1);
+        fft_normalize_r2c(fbox, N, boxlen);
+        double k_max = (4. / 3.) * 0.6737;
+        double R_filter = (10 / 0.6737);
+        fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass, &k_max);
+        fft_execute(c2r1);
+        fft_normalize_c2r(total, N, boxlen);
+    }
 
     /* Store the density grid at this order */
     int density_index = add_coeff(spatial_coeffs, 'X', n, 0);
@@ -135,21 +136,24 @@ int generate_spatial_factors_at_n_EdS(struct spatial_factor_table *sft,
     /* Apply the prefactors for the density grid */
     #pragma omp for
     for (int k = 0; k < N * N * N; k++) {
-        total[k] = prefactor_flux_1 * result1[k] + prefactor_flux_2 * result2[k];
+        total[k] =
+            prefactor_flux_1 * result1[k] + prefactor_flux_2 * result2[k];
     }
 
-    fftw_plan r2c2 =
-        fftw_plan_dft_r2c_3d(N, N, N, total, fbox, FFTW_ESTIMATE);
-    fftw_plan c2r2 =
-        fftw_plan_dft_c2r_3d(N, N, N, fbox, total, FFTW_ESTIMATE);
+    fftw_plan r2c2 = fftw_plan_dft_r2c_3d(N, N, N, total, fbox, FFTW_ESTIMATE);
+    fftw_plan c2r2 = fftw_plan_dft_c2r_3d(N, N, N, fbox, total, FFTW_ESTIMATE);
 
     /* Fourier transform the incoming grids */
-    fft_execute(r2c2);
-    fft_normalize_r2c(fbox, N, boxlen);
-    fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass, &k_max);
-    fft_execute(c2r2);
-    fft_normalize_c2r(total, N, boxlen);
-
+    cutoff = 0;
+    if (cutoff) {
+        fft_execute(r2c2);
+        fft_normalize_r2c(fbox, N, boxlen);
+        double k_max = (4. / 3.) * 0.6737;
+        double R_filter = (10 / 0.6737);
+        fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass, &k_max);
+        fft_execute(c2r2);
+        fft_normalize_c2r(total, N, boxlen);
+    }
 
     /* Store the grid for result 1 */
     int flux_index = add_coeff(spatial_coeffs, 'Y', n, 0);
@@ -252,6 +256,10 @@ int generate_spatial_factors_at_n(struct spatial_factor_table *sft,
                 // printf("%f %f\n", dest_prefactor_1, dest_prefactor_2);
                 // printf("%f %f\n", dest_derivative_1, dest_derivative_2);
 
+                /* Prevent singularities */
+                double inv_1 = (dest_prefactor_1 == 0) ? 0 : 1.0 / dest_prefactor_1;
+                double inv_2 = (dest_prefactor_2 == 0) ? 0 : 1.0 / dest_prefactor_2;
+
                 /* Fetch the input grids */
                 fetch_grid(sft, input1, source_index_1);
                 fetch_grid(sft, input2, source_index_2);
@@ -262,26 +270,31 @@ int generate_spatial_factors_at_n(struct spatial_factor_table *sft,
 
                 /* Solve for the inverse matrix */
                 double mat[] = {
-                    O_11 + dest_derivative_1 / dest_prefactor_1 + n, O_12, O_21,
-                    O_22 + dest_derivative_2 / dest_prefactor_2 + n
+                    O_11 + dest_derivative_1 * inv_1 + n, O_12, O_21, O_22 + dest_derivative_2 * inv_2 + n
                 };
                 double mat_inv[4];
                 matrix_inv_2d(mat, mat_inv);
 
                 /* Fourier transform the grid */
-                fftw_plan r2c = fftw_plan_dft_r2c_3d(N, N, N, result, fbox,
-                FFTW_ESTIMATE); fft_execute(r2c); fft_normalize_r2c(fbox, N,
-                boxlen); fftw_destroy_plan(r2c);
+                fftw_plan r2c =
+                    fftw_plan_dft_r2c_3d(N, N, N, result, fbox, FFTW_ESTIMATE);
+                fft_execute(r2c);
+                fft_normalize_r2c(fbox, N, boxlen);
+                fftw_destroy_plan(r2c);
 
                 /* Apply k-cutoff */
-                double k_max = (4./3.) * 0.6737;
-                fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass,
-                &k_max);
+                int cutoff = 0;
+                if (cutoff) {
+                    double k_max = (4. / 3.) * 0.6737;
+                    fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass, &k_max);
+                }
 
                 /* Fourier transform back */
-                fftw_plan c2r = fftw_plan_dft_c2r_3d(N, N, N, fbox, result,
-                FFTW_ESTIMATE); fft_execute(c2r); fft_normalize_c2r(result,
-                N, boxlen); fftw_destroy_plan(c2r);
+                fftw_plan c2r =
+                    fftw_plan_dft_c2r_3d(N, N, N, fbox, result, FFTW_ESTIMATE);
+                fft_execute(c2r);
+                fft_normalize_c2r(result, N, boxlen);
+                fftw_destroy_plan(c2r);
 
                 // printf("\n\n====\n");
                 // printf("%f %f\n%f %f\n", mat[0], mat[1], mat[2], mat[3]);
@@ -292,11 +305,11 @@ int generate_spatial_factors_at_n(struct spatial_factor_table *sft,
                 /* We want to store the grids with the correct prefactor ratio
                  */
                 double prefactor_1 = mat_inv[0] * source_prefactor_1 *
-                                     source_prefactor_2 / dest_prefactor_1;
+                                     source_prefactor_2 * inv_1;
                 double prefactor_2 = mat_inv[2] * source_prefactor_1 *
-                                     source_prefactor_2 / dest_prefactor_2;
+                                     source_prefactor_2 * inv_2;
 
-                printf("%f %f\n", prefactor_1, prefactor_2);
+                printf("Prefactors %f %f\n", prefactor_1, prefactor_2);
 
                 /* Apply the prefactor for result 1 */
                 #pragma omp for
@@ -368,6 +381,10 @@ int generate_spatial_factors_at_n(struct spatial_factor_table *sft,
                 // printf("%f %f\n", dest_prefactor_1, dest_prefactor_2);
                 // printf("%f %f\n", dest_derivative_1, dest_derivative_2);
 
+                /* Prevent singularities */
+                double inv_1 = (dest_prefactor_1 == 0) ? 0 : 1.0 / dest_prefactor_1;
+                double inv_2 = (dest_prefactor_2 == 0) ? 0 : 1.0 / dest_prefactor_2;
+
                 /* Fetch the input grids */
                 fetch_grid(sft, input1, source_index_1);
                 fetch_grid(sft, input2, source_index_2);
@@ -378,8 +395,7 @@ int generate_spatial_factors_at_n(struct spatial_factor_table *sft,
 
                 /* Solve for the inverse matrix */
                 double mat[] = {
-                    O_11 + dest_derivative_1 / dest_prefactor_1 + n, O_12, O_21,
-                    O_22 + dest_derivative_2 / dest_prefactor_2 + n
+                    O_11 + dest_derivative_1 * inv_1 + n, O_12, O_21, O_22 + dest_derivative_2 * inv_2 + n
                 };
                 double mat_inv[4];
                 matrix_inv_2d(mat, mat_inv);
@@ -387,26 +403,32 @@ int generate_spatial_factors_at_n(struct spatial_factor_table *sft,
                 /* We want to store the grids with the correct prefactor ratio
                  */
                 double prefactor_1 = mat_inv[1] * source_prefactor_1 *
-                                     source_prefactor_2 / dest_prefactor_1;
+                                     source_prefactor_2 * inv_1;
                 double prefactor_2 = mat_inv[3] * source_prefactor_1 *
-                                     source_prefactor_2 / dest_prefactor_2;
+                                     source_prefactor_2 * inv_2;
 
-                printf("%f %f\n", prefactor_1, prefactor_2);
+                printf("Prefactors %f %f\n", prefactor_1, prefactor_2);
 
                 /* Fourier transform the grid */
-                fftw_plan r2c = fftw_plan_dft_r2c_3d(N, N, N, result, fbox,
-                FFTW_ESTIMATE); fft_execute(r2c); fft_normalize_r2c(fbox, N,
-                boxlen); fftw_destroy_plan(r2c);
+                fftw_plan r2c =
+                    fftw_plan_dft_r2c_3d(N, N, N, result, fbox, FFTW_ESTIMATE);
+                fft_execute(r2c);
+                fft_normalize_r2c(fbox, N, boxlen);
+                fftw_destroy_plan(r2c);
 
                 /* Apply k-cutoff */
-                double k_max = (4./3.) * 0.6737;
-                fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass,
-                &k_max);
+                int cutoff = 0;
+                if (cutoff) {
+                    double k_max = (4. / 3.) * 0.6737;
+                    fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass, &k_max);
+                }
 
                 /* Fourier transform back */
-                fftw_plan c2r = fftw_plan_dft_c2r_3d(N, N, N, fbox, result,
-                FFTW_ESTIMATE); fft_execute(c2r); fft_normalize_c2r(result,
-                N, boxlen); fftw_destroy_plan(c2r);
+                fftw_plan c2r =
+                    fftw_plan_dft_c2r_3d(N, N, N, fbox, result, FFTW_ESTIMATE);
+                fft_execute(c2r);
+                fft_normalize_c2r(result, N, boxlen);
+                fftw_destroy_plan(c2r);
 
                 /* Apply the prefactor for result 1 */
                 #pragma omp for
@@ -463,7 +485,7 @@ int aggregate_factors_at_n(struct spatial_factor_table *sft,
         double prefactor = interp_time_factor(tft, time, time_index) * Dn;
         // prefactor = 1.0;
 
-        printf("%f %f %f\n", prefactor, Dn, prefactor / Dn);
+        printf("prefactor %f %f %f\n", prefactor, Dn, prefactor / Dn);
 
         /* Fetch the grid */
         fetch_grid(sft, input, space_index);
@@ -483,9 +505,9 @@ int aggregate_factors_at_n(struct spatial_factor_table *sft,
         /* Retrieve the pre-factor */
         double Dn = exp(n * time);
         double prefactor = interp_time_factor(tft, time, time_index) * Dn;
-        prefactor = 1.0;
+        // prefactor = 1.0;
 
-        printf("%f %f %f\n", prefactor, Dn, prefactor / Dn);
+        printf("prefactor %f %f %f\n", prefactor, Dn, prefactor / Dn);
 
         /* Fetch the grid */
         fetch_grid(sft, input, space_index);

@@ -25,11 +25,16 @@
 #define CONTINUITY_EQ 0
 #define EULER_EQ      1
 
+enum ic_type {
+    EdS = 0, /* Einstein-de Sitter */
+    RD = 1,  /* Radiation domination */
+};
+
 struct time_factor_table {
     struct coeff_table ct; /* Table of coefficient names */
     double *table;         /* Array of N_t * N_f time factors X_{i,j}(t) */
     double *dtable_dt;     /* Array of N_t * N_f time derivatives X'_{i,j}(t) */
-    double *EdS_factor;    /* Array of N_f constant values in the EdS limit */
+    double *ic_factor;     /* Array of N_f initial conditions for the factors */
     double *time_sampling; /* Vector of length N_t times */
     int N_t;               /* Number of time steps */
     int N_f;               /* Maximum number of time factors  */
@@ -57,8 +62,11 @@ int integrate_time_factor(struct time_factor_table *tab, char which_equation,
 int compute_time_factor_EdS(struct time_factor_table *tab, char which_equation,
                             int source_index_1, int source_index_2,
                             int dest_index_1, int dest_index_2, int n);
+int compute_time_factor_RD(struct time_factor_table *tab, char which_equation,
+                           int source_index_1, int source_index_2,
+                           int dest_index_1, int dest_index_2, int n);
 int generate_time_factors_at_n(struct time_factor_table *tab,
-                               struct coeff_table *c, int n);
+                               struct coeff_table *c, int n, enum ic_type);
 int compute_all_derivatives(struct time_factor_table *tab);
 
 #endif

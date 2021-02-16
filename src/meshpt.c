@@ -32,18 +32,29 @@ double D(double eta) {
     return exp(eta);
 }
 
-int run_meshpt(int N, double boxlen, int nk, void *gridv, void *kvecv,
-               void *Pvecv, int nz, void *zvecv, void *Dvecv, int N_SPT,
+int run_meshpt(int N, double boxlen, double Omega_m, int nk, void *gridv,
+               void *kvecv, void *Pvecv, int nz, void *zvecv, void *Dvecv,
+               void *fvecv, void *Omega21v, void *Omega22v, int N_SPT,
                double z_ini, double z_final) {
 
     /* The output grid */
-    double *grid = (double *) gridv;
+    double *grid = (double *)gridv;
 
-    /* Memory block for the output data */
-    double *kvec = (double *) kvecv;
-    double *Pvec = (double *) Pvecv;
-    double *zvec = (double *) zvecv;
-    double *Dvec = (double *) Dvecv;
+    /* Memory block for the input data */
+    double *kvec = (double *)kvecv;
+    double *Pvec = (double *)Pvecv;
+    double *zvec = (double *)zvecv;
+    double *Dvec = (double *)Dvecv;
+    double *fvec = (double *)fvecv;
+    double *Omega21 = (double *)Omega21v;
+    double *Omega22 = (double *)Omega22v;
+
+    /* Compute logarithm of growth factor, which will be used as time variable
+     */
+    double *logDvec = malloc(nz * sizeof(double));
+    for (int i = 0; i < nz; i++) {
+        logDvec[i] = log(Dvec[i]);
+    }
 
     /* MeshPT structs */
     struct coeff_table time_coefficients;
@@ -59,18 +70,31 @@ int run_meshpt(int N, double boxlen, int nk, void *gridv, void *kvecv,
     struct power_spline D_spline = {zvec, Dvec, nz};
     init_power_spline(&D_spline, 100);
 
+    /* Initialize Omega_21 interpolation sline */
+    struct power_spline Omega21_spline = {zvec, Omega21, nz};
+    init_power_spline(&Omega21_spline, 100);
+
+    /* Initialize Omega_22 interpolation sline */
+    struct power_spline Omega22_spline = {zvec, Omega22, nz};
+    init_power_spline(&Omega22_spline, 100);
+
+    /* Initialize log growth factor interpolation sline */
+    struct power_spline f_spline = {zvec, fvec, nz};
+    init_power_spline(&f_spline, 100);
+
     /* Table lengths */
-    int min_length = 1000;
-    int cache_length = 0;
+    int min_length = 10000;
+    int cache_length = 4;
     int timesteps = 100;
 
     /* Starting and ending times */
-    double a_ini = 1./(1+z_ini);
-    double a_final = 1./(1+z_final);
+    double a_ini = 1. / (1 + z_ini);
+    double a_final = 1. / (1 + z_final);
     double t_i = log(a_ini);
     double t_f = log(a_final);
 
     printf("%f %f\n", t_i, t_f);
+    printf("Omega_m: %f\n", Omega_m);
 
     /* Store a grid */
     int s = 101;
@@ -95,10 +119,23 @@ int run_meshpt(int N, double boxlen, int nk, void *gridv, void *kvecv,
 
     /* For Einstein-de Sitter, it's just constant */
     for (int i = 0; i < time_factors.N_t; i++) {
+        double t = time_factors.time_sampling[i];
+        int index;
+        double u;
+        double z = 1. / exp(t) - 1;
+        power_spline_find_k(&Omega21_spline, z, &index, &u);
+
+        double Omega21_z = power_spline_interp(&Omega21_spline, index, u);
+        double Omega22_z = power_spline_interp(&Omega22_spline, index, u);
+
         time_factors.table[Omega_11 * time_factors.N_t + i] = 0.;
         time_factors.table[Omega_12 * time_factors.N_t + i] = -1.;
-        time_factors.table[Omega_21 * time_factors.N_t + i] = -1.5;
-        time_factors.table[Omega_22 * time_factors.N_t + i] = 0.5;
+        time_factors.table[Omega_21 * time_factors.N_t + i] = Omega21_z;
+        time_factors.table[Omega_22 * time_factors.N_t + i] = Omega22_z;
+        // time_factors.table[Omega_21 * time_factors.N_t + i] = 0;
+        // time_factors.table[Omega_22 * time_factors.N_t + i] = -1;
+
+        // printf("%f %f\n", Omega21_z, Omega22_z);
     }
 
     /* Fill in the first time factor c_{1,0} = d_{1,0} = D(t) */
@@ -109,16 +146,21 @@ int run_meshpt(int N, double boxlen, int nk, void *gridv, void *kvecv,
         double t = time_factors.time_sampling[i];
         int index;
         double u;
-        double z = 1./exp(t) - 1;
+        double z = 1. / exp(t) - 1;
         power_spline_find_k(&D_spline, z, &index, &u);
 
-        time_factors.table[index1 * time_factors.N_t + i] = power_spline_interp(&D_spline, index, u) / exp(t);
-        time_factors.table[index2 * time_factors.N_t + i] = power_spline_interp(&D_spline, index, u) / exp(t);
+        // time_factors.table[index1 * time_factors.N_t + i] =
+        //     power_spline_interp(&D_spline, index, u) / exp(t);
+        // time_factors.table[index2 * time_factors.N_t + i] =
+        //     power_spline_interp(&D_spline, index, u) / exp(t);
+
+        time_factors.table[index1 * time_factors.N_t + i] = 1.0;
+        time_factors.table[index2 * time_factors.N_t + i] = 1.0;
     }
 
-    /* Set the constant EdS limit coefficients */
-    time_factors.EdS_factor[index1] = 1.0;
-    time_factors.EdS_factor[index2] = 1.0;
+    /* Set the constant initial condition coefficients */
+    time_factors.ic_factor[index1] = 1.0;
+    time_factors.ic_factor[index2] = 1.0;
 
     /* Allocate array for the primordial Gaussian field */
     fftw_complex *fbox = malloc(N * N * (N / 2 + 1) * sizeof(fftw_complex));
@@ -131,9 +173,13 @@ int run_meshpt(int N, double boxlen, int nk, void *gridv, void *kvecv,
     /* Apply the interpolated power spectrum */
     fft_apply_kernel(fbox, fbox, N, boxlen, kernel_sqrt_power_spline, &spline);
 
+    int cutoff = 0;
+
     /* Apply a k-cutoff to address UV divergences */
-    double k_max = 1.0 * 0.6737;
-    fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass, &k_max);
+    if (cutoff) {
+        double k_max = 1.0 * 0.6737;
+        fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass, &k_max);
+    }
 
     /* Fourier transform the grid */
     fftw_plan c2r = fftw_plan_dft_c2r_3d(N, N, N, fbox, box, FFTW_ESTIMATE);
@@ -157,14 +203,12 @@ int run_meshpt(int N, double boxlen, int nk, void *gridv, void *kvecv,
     fbox = malloc(N * N * (N / 2 + 1) * sizeof(fftw_complex));
     box = malloc(N * N * N * sizeof(double));
 
-    fftw_plan r2c1 =
-        fftw_plan_dft_r2c_3d(N, N, N, box, fbox, FFTW_ESTIMATE);
-    fftw_plan c2r1 =
-        fftw_plan_dft_c2r_3d(N, N, N, fbox, box, FFTW_ESTIMATE);
+    fftw_plan r2c1 = fftw_plan_dft_r2c_3d(N, N, N, box, fbox, FFTW_ESTIMATE);
+    fftw_plan c2r1 = fftw_plan_dft_c2r_3d(N, N, N, fbox, box, FFTW_ESTIMATE);
 
     /* Generate the higher order time factors */
-    for (int n = 0; n < N_SPT; n++) {
-      generate_time_factors_at_n(&time_factors, &time_coefficients, n);
+    for (int n = 2; n <= N_SPT; n++) {
+        generate_time_factors_at_n(&time_factors, &time_coefficients, n, EdS);
     }
 
     /* Compute the derivatives */
@@ -175,10 +219,10 @@ int run_meshpt(int N, double boxlen, int nk, void *gridv, void *kvecv,
 
     /* Generate the higher order spatial factors */
     double a_begin = log(a_final);
-    for (int n = 0; n < N_SPT; n++) {
-      generate_spatial_factors_at_n(&space_factors, &time_factors,
-                                    &space_coefficients, &time_coefficients, n,
-                                    a_begin);
+    for (int n = 2; n <= N_SPT; n++) {
+        generate_spatial_factors_at_n(&space_factors, &time_factors,
+                                      &space_coefficients, &time_coefficients,
+                                      n, a_begin);
     }
 
     /* Compute the aggregate fields */
@@ -206,7 +250,7 @@ int run_meshpt(int N, double boxlen, int nk, void *gridv, void *kvecv,
     }
 
     /* Copy the full nonlinear density field into the output array */
-    memcpy(grid, density, N*N*N*sizeof(double));
+    memcpy(grid, density, N * N * N * sizeof(double));
 
     // /* Fourier transform the grid */
     // fft_execute(r2c1);
@@ -237,14 +281,14 @@ int run_meshpt(int N, double boxlen, int nk, void *gridv, void *kvecv,
     for (int i = 0; i < time_factors.N_t; i++) {
         double t = time_factors.time_sampling[i];
 
-        int new1 = find_coeff_index(&time_coefficients, 'd', n, 1);
-        int new2 = find_coeff_index(&time_coefficients, 'd', n, 0);
+        int new1 = find_coeff_index(&time_coefficients, 'c', n, 2);
+        int new2 = find_coeff_index(&time_coefficients, 'c', n, 3);
 
         double a1 = time_factors.table[new1 * time_factors.N_t + i];
         double a2 = time_factors.table[new2 * time_factors.N_t + i];
 
-        double b1 = time_factors.EdS_factor[new1];
-        double b2 = time_factors.EdS_factor[new2];
+        double b1 = time_factors.ic_factor[new1];
+        double b2 = time_factors.ic_factor[new2];
 
         printf("%f %f %f %f %f\n", t, a1, a2, b1, b2);
         // printf("%f %f %f %f\n", t, a1, a2, (a1 + a2));
@@ -257,6 +301,9 @@ int run_meshpt(int N, double boxlen, int nk, void *gridv, void *kvecv,
     free_spatial_factor_table(&space_factors);
     free_power_spline(&spline);
     free_power_spline(&D_spline);
+    free_power_spline(&f_spline);
+    free_power_spline(&Omega21_spline);
+    free_power_spline(&Omega22_spline);
 
     return 0;
 }
@@ -267,7 +314,6 @@ int main() {
     return 0;
 }
 
-
 int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
                          double factor, void *kvecv, void *power_linv,
                          void *gridv) {
@@ -276,11 +322,11 @@ int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
     double cell_mass = pow(boxlen / N, 3);
 
     /* The input data (power spectrum table) */
-    double *kvec = (double *) kvecv;
-    double *Pvec = (double *) power_linv;
+    double *kvec = (double *)kvecv;
+    double *Pvec = (double *)power_linv;
 
     /* Memory block for the output data */
-    double *grid = (double *) gridv;
+    double *grid = (double *)gridv;
 
     /* Initialize power spectrum interpolation sline */
     struct power_spline spline = {kvec, Pvec, nk};
@@ -293,9 +339,9 @@ int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
     int unique = (int)(sampleUniform(&seed) * 1e6);
 
     /* Allocate array for the primordial Gaussian field */
-    fftw_complex *fbox = malloc(N*N*(N/2+1) * sizeof(fftw_complex));
-    fftw_complex *fbox2 = malloc(N*N*(N/2+1) * sizeof(fftw_complex));
-    double *box = malloc(N*N*N * sizeof(double));
+    fftw_complex *fbox = malloc(N * N * (N / 2 + 1) * sizeof(fftw_complex));
+    fftw_complex *fbox2 = malloc(N * N * (N / 2 + 1) * sizeof(fftw_complex));
+    double *box = malloc(N * N * N * sizeof(double));
     /* Generate a complex Hermitian Gaussian random field */
     generate_complex_grf(fbox, N, boxlen, &seed);
     enforce_hermiticity(fbox, N, boxlen);
@@ -305,7 +351,7 @@ int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
 
     /* Apply the smoothing filter */
     double R_smooth = 1.0;
-    double k_cutoff = 1.0/R_smooth;
+    double k_cutoff = 1.0 / R_smooth;
 
     /* Fourier transform the grid */
     fftw_plan c2r = fftw_plan_dft_c2r_3d(N, N, N, fbox, box, FFTW_ESTIMATE);
@@ -319,7 +365,7 @@ int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
 
     /* Apply spherical collapse transform */
     const double alpha = 1.5;
-    for (int i=0; i<N*N*N; i++) {
+    for (int i = 0; i < N * N * N; i++) {
         double d = box[i] * factor;
         // if (d < alpha) {
         //     d = -3*pow(1-d/alpha, alpha/3)+3;
@@ -328,10 +374,10 @@ int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
         // }
         // grid[i] = d;
         // grid[i] = d / 1; //ZELDOVICH
-        grid[i] = d - d*d/7; //2LPT-like
+        grid[i] = d - d * d / 7; // 2LPT-like
     }
 
-    printf("%f\n", grid[0]);
+    // printf("%f\n", grid[0]);
 
     /* Fourier transform the grid back */
     fftw_plan r2c = fftw_plan_dft_r2c_3d(N, N, N, box, fbox, FFTW_ESTIMATE);
@@ -339,7 +385,8 @@ int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
     fft_normalize_r2c(fbox, N, boxlen);
 
     /* Prepare a second plan */
-    fftw_plan c2r_alt = fftw_plan_dft_c2r_3d(N, N, N, fbox2, box, FFTW_ESTIMATE);
+    fftw_plan c2r_alt =
+        fftw_plan_dft_c2r_3d(N, N, N, fbox2, box, FFTW_ESTIMATE);
 
     /* Free memory */
     free(box);
@@ -358,12 +405,12 @@ int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
     fft_apply_kernel(fbox, fbox, N, boxlen, kernel_inv_poisson, NULL);
 
     /* Allocate memory for the three displacement grids */
-    fftw_complex *f_psi_x = malloc(N*N*(N/2+1) * sizeof(fftw_complex));
-    fftw_complex *f_psi_y = malloc(N*N*(N/2+1) * sizeof(fftw_complex));
-    fftw_complex *f_psi_z = malloc(N*N*(N/2+1) * sizeof(fftw_complex));
-    double *psi_x = malloc(N*N*N * sizeof(double));
-    double *psi_y = malloc(N*N*N * sizeof(double));
-    double *psi_z = malloc(N*N*N * sizeof(double));
+    fftw_complex *f_psi_x = malloc(N * N * (N / 2 + 1) * sizeof(fftw_complex));
+    fftw_complex *f_psi_y = malloc(N * N * (N / 2 + 1) * sizeof(fftw_complex));
+    fftw_complex *f_psi_z = malloc(N * N * (N / 2 + 1) * sizeof(fftw_complex));
+    double *psi_x = malloc(N * N * N * sizeof(double));
+    double *psi_y = malloc(N * N * N * sizeof(double));
+    double *psi_z = malloc(N * N * N * sizeof(double));
 
     /* Compute the displacements grids by differentiating the potential */
     fft_apply_kernel(f_psi_x, fbox, N, boxlen, kernel_dx, NULL);
@@ -371,9 +418,12 @@ int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
     fft_apply_kernel(f_psi_z, fbox, N, boxlen, kernel_dz, NULL);
 
     /* Fourier transform the potential grids */
-    fftw_plan c2r_x = fftw_plan_dft_c2r_3d(N, N, N, f_psi_x, psi_x, FFTW_ESTIMATE);
-    fftw_plan c2r_y = fftw_plan_dft_c2r_3d(N, N, N, f_psi_y, psi_y, FFTW_ESTIMATE);
-    fftw_plan c2r_z = fftw_plan_dft_c2r_3d(N, N, N, f_psi_z, psi_z, FFTW_ESTIMATE);
+    fftw_plan c2r_x =
+        fftw_plan_dft_c2r_3d(N, N, N, f_psi_x, psi_x, FFTW_ESTIMATE);
+    fftw_plan c2r_y =
+        fftw_plan_dft_c2r_3d(N, N, N, f_psi_y, psi_y, FFTW_ESTIMATE);
+    fftw_plan c2r_z =
+        fftw_plan_dft_c2r_3d(N, N, N, f_psi_z, psi_z, FFTW_ESTIMATE);
     fft_execute(c2r_x);
     fft_execute(c2r_y);
     fft_execute(c2r_z);
@@ -391,29 +441,29 @@ int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
     free(f_psi_z);
 
     /* Reset the box array */
-    memset(grid, 0, N*N*N*sizeof(double));
+    memset(grid, 0, N * N * N * sizeof(double));
 
     /* Compute the density grid by CIC mass assignment */
-    double fac = N/boxlen;
-    for (int x=0; x<N; x++) {
-        for (int y=0; y<N; y++) {
-            for (int z=0; z<N; z++) {
+    double fac = N / boxlen;
+    for (int x = 0; x < N; x++) {
+        for (int y = 0; y < N; y++) {
+            for (int z = 0; z < N; z++) {
 
                 double dx = psi_x[row_major(x, y, z, N)];
                 double dy = psi_y[row_major(x, y, z, N)];
                 double dz = psi_z[row_major(x, y, z, N)];
 
-                double X = x - dx*fac;
-                double Y = y - dy*fac;
-                double Z = z - dz*fac;
+                double X = x - dx * fac;
+                double Y = y - dy * fac;
+                double Z = z - dz * fac;
 
-                int iX = (int) floor(X);
-                int iY = (int) floor(Y);
-                int iZ = (int) floor(Z);
+                int iX = (int)floor(X);
+                int iY = (int)floor(Y);
+                int iZ = (int)floor(Z);
 
-                for (int i=-1; i<=1; i++) {
-        			for (int j=-1; j<=1; j++) {
-        				for (int k=-1; k<=1; k++) {
+                for (int i = -1; i <= 1; i++) {
+                    for (int j = -1; j <= 1; j++) {
+                        for (int k = -1; k <= 1; k++) {
                             double xx = fabs(X - (iX + i));
                             double yy = fabs(Y - (iY + j));
                             double zz = fabs(Z - (iZ + k));
@@ -422,7 +472,8 @@ int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
                             double part_y = yy <= 1 ? 1 - yy : 0;
                             double part_z = zz <= 1 ? 1 - zz : 0;
 
-                            grid[row_major(iX+i, iY+j, iZ+k, N)] += cell_mass * part_x * part_y * part_z;
+                            grid[row_major(iX + i, iY + j, iZ + k, N)] +=
+                                cell_mass * part_x * part_y * part_z;
                         }
                     }
                 }
@@ -433,7 +484,6 @@ int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
     free(psi_x);
     free(psi_y);
     free(psi_z);
-
 
     /* Clean up the spline */
     free_power_spline(&spline);
