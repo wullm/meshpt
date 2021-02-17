@@ -150,6 +150,8 @@ print("D_0: ", D_0)
 print("D_f: ", D_f)
 print("D_lin: ", D_lin)
 
+#MeshPT needs a z=0 power spectrum, so one can rescale a power spectrum to z=0
+#if a different input redshift is desired
 if (not z_lin == 0):
     print("Rescaling the linear theory power spectrum")
     Pvec *= (D_0 / D_lin)**2

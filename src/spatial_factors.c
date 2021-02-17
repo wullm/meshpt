@@ -70,7 +70,7 @@ int generate_spatial_factors_at_n_EdS(struct spatial_factor_table *sft,
         int source_index_3 =
             find_coeff_index_require(spatial_coeffs, 'Y', l, 0);
 
-        printf("Doing %d and %d for %d\n", l, (n - l), n);
+        // printf("Doing %d and %d for %d\n", l, (n - l), n);
 
         /* Fetch the input grids */
         fetch_grid(sft, input1, source_index_1);
@@ -92,8 +92,8 @@ int generate_spatial_factors_at_n_EdS(struct spatial_factor_table *sft,
     double prefactor_flux_1 = 2.0 / ((2 * n + 3) * (n - 1)) * 1.5;
     double prefactor_flux_2 = 2.0 / ((2 * n + 3) * (n - 1)) * n;
 
-    printf("%f %f\n", prefactor_density_1, prefactor_density_2);
-    printf("%f %f\n", prefactor_flux_1, prefactor_flux_2);
+    printf("EdS prefactors %f %f\n", prefactor_density_1, prefactor_density_2);
+    printf("EdS prefactors %f %f\n", prefactor_flux_1, prefactor_flux_2);
 
     /* Apply the prefactors for the density grid */
     #pragma omp for
@@ -483,9 +483,8 @@ int aggregate_factors_at_n(struct spatial_factor_table *sft,
         /* Retrieve the pre-factor */
         double Dn = exp(n * time);
         double prefactor = interp_time_factor(tft, time, time_index) * Dn;
-        // prefactor = 1.0;
 
-        printf("prefactor %f %f %f\n", prefactor, Dn, prefactor / Dn);
+        // printf("aggregate prefactor %f %f %f\n", prefactor, Dn, prefactor / Dn);
 
         /* Fetch the grid */
         fetch_grid(sft, input, space_index);
@@ -505,9 +504,64 @@ int aggregate_factors_at_n(struct spatial_factor_table *sft,
         /* Retrieve the pre-factor */
         double Dn = exp(n * time);
         double prefactor = interp_time_factor(tft, time, time_index) * Dn;
-        // prefactor = 1.0;
 
-        printf("prefactor %f %f %f\n", prefactor, Dn, prefactor / Dn);
+        // printf("aggregate prefactor %f %f %f\n", prefactor, Dn, prefactor / Dn);
+
+        /* Fetch the grid */
+        fetch_grid(sft, input, space_index);
+
+        /* Add the result with the prefactor */
+        #pragma omp for
+        for (int j = 0; j < N * N * N; j++) {
+            flux[j] += prefactor * input[j];
+        }
+    }
+
+    /* Free the intermediate grid */
+    free(input);
+
+    return 0;
+}
+
+int aggregate_factors_at_n_EdS(struct spatial_factor_table *sft,
+                               const struct time_factor_table *tft,
+                               struct coeff_table *spatial_coeffs,
+                               const struct coeff_table *time_coeffs, int n,
+                               double time, double *density, double *flux) {
+
+    const int N = sft->N;
+    const double boxlen = sft->boxlen;
+    double *input = malloc(N * N * N * sizeof(double));
+
+    /* Retrieve the density flux grid */
+    {
+        int space_index = find_coeff_index_require(spatial_coeffs, 'X', n, 0);
+
+        /* Retrieve the pre-factor */
+        double Dn = exp(n * time);
+        double prefactor = Dn;
+
+        // printf("aggregate prefactor %f %f %f\n", prefactor, Dn, prefactor / Dn);
+
+        /* Fetch the grid */
+        fetch_grid(sft, input, space_index);
+
+        /* Add the result with the prefactor */
+        // #pragma omp for
+        for (int j = 0; j < N * N * N; j++) {
+            density[j] += prefactor * input[j];
+        }
+    }
+
+    /* Retrieve the energy flux grid */
+    {
+        int space_index = find_coeff_index_require(spatial_coeffs, 'Y', n, 0);
+
+        /* Retrieve the pre-factor */
+        double Dn = exp(n * time);
+        double prefactor = Dn;
+
+        // printf("aggregate prefactor %f %f %f\n", prefactor, Dn, prefactor / Dn);
 
         /* Fetch the grid */
         fetch_grid(sft, input, space_index);

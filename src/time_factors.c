@@ -294,8 +294,6 @@ int compute_time_factor_EdS(struct time_factor_table *tab, char which_equation,
     /* Constant pre-factor at order n in the EdS limit */
     double pre_factor = 2.0 / (2 * n * n + n - 3);
 
-    printf("prefactor %f\n", pre_factor);
-
     /* Fetch the EdS factors for the source terms */
     double factor_1 = tab->ic_factor[source_index_1];
     double factor_2 = tab->ic_factor[source_index_2];
@@ -320,8 +318,6 @@ int compute_time_factor_RD(struct time_factor_table *tab, char which_equation,
 
     /* Constant pre-factor at order n in the RD limit */
     double pre_factor = 1.0 / (n * n - n);
-
-    printf("prefactor %f\n", pre_factor);
 
     /* Fetch the RD factors for the source terms */
     double factor_1 = tab->ic_factor[source_index_1];

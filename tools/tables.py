@@ -118,17 +118,17 @@ N = 256
 #Physical dimensions of the box
 L = N * 1.0 / h
 #Cutoff scale for the primary grid (0 = no cutoff)
-k_cutoff = 0
+k_cutoff = h
 
 #Initial and final (desired output) redshifts of the SPT calculation
 z_i = 9.5e13
-z_f = 40
+z_f = 0
 
 #Desired redshift of the linear theory power spectrum (can be set equal to z_i or something else for rescaled ICs)
 z_lin = 0
 
 #Desired order in perturbation theory
-N_SPT = 3
+N_SPT = 2
 
 #Perform rescaling if necessary
 D_0 = np.interp(0, zvec, Dvec)
@@ -139,6 +139,8 @@ print("D_0: ", D_0)
 print("D_f: ", D_f)
 print("D_lin: ", D_lin)
 
+#MeshPT needs a z=0 power spectrum, so one can rescale a power spectrum to z=0
+#if a different input redshift is desired
 if (not z_lin == 0):
     print("Rescaling the linear theory power spectrum")
     Pvec *= (D_0 / D_lin)**2
@@ -170,47 +172,48 @@ lib.run_meshpt(c_N, c_L, c_grid, c_nk, c_kvec, c_sqrtPvec, c_nz, c_logDvec,
 plt.imshow(grid[100:120].mean(axis=0), cmap="magma")
 plt.show()
 
-#Allocate a grid for the Lagrangian calculation
-grid_lpt = np.zeros((N,N,N))
-c_grid_lpt = ctypes.c_void_p(grid_lpt.ctypes.data);
+# #Allocate a grid for the Lagrangian calculation
+# grid_lpt = np.zeros((N,N,N))
+# c_grid_lpt = ctypes.c_void_p(grid_lpt.ctypes.data);
+#
+# seed = 101
+# PFac = 1.0
+# c_seed = ctypes.c_int(seed);
+# c_PFac = ctypes.c_double(PFac);
+#
+# Pvec_LPT_input = Pvec * (D_f/D_0)**2
+# c_Pvec_LPT_input = ctypes.c_void_p(Pvec_LPT_input.ctypes.data);
+#
+# #Compute the LPT solution
+# lib.computeNonlinearGrid(c_N, c_L, c_seed, c_nk, c_PFac, c_kvec,
+#                          c_Pvec_LPT_input, c_grid_lpt);
+#
+# #Normalize the LPT grid
+# grid_lpt = (grid_lpt - grid_lpt.mean())/grid_lpt.mean()
 
-seed = 101
-PFac = 1.0
-c_seed = ctypes.c_int(seed);
-c_PFac = ctypes.c_double(PFac);
-
-Pvec_LPT_input = Pvec * (D_f/D_0)**2
-c_Pvec_LPT_input = ctypes.c_void_p(Pvec_LPT_input.ctypes.data);
-
-#Compute the LPT solution
-lib.computeNonlinearGrid(c_N, c_L, c_seed, c_nk, c_PFac, c_kvec,
-                         c_Pvec_LPT_input, c_grid_lpt);
-
-#Normalize the LPT grid
-grid_lpt = (grid_lpt - grid_lpt.mean())/grid_lpt.mean()
-
-#Compute the power spectra
-Nhalf = int(N/2)+1
-mask = np.ones((N,N,Nhalf))
-C_lpt = compute_PS(grid_lpt, N, L, z_f, mask, True)
-C = compute_PS(grid, N, L, z_f, mask, False)
-k = C[:,0]
-
-#Cut off high k modes
-C = C[k<1,:]
-C_lpt = C_lpt[k<1,:]
-
-#Retrieve the linear power spectrum at these points
-Plin = np.interp(C[:,0], kvec, Pvec) * (D_f/D_0)**2
-
-#Plot the power spectrum
-plt.loglog(C[:,0], C[:,2], label="SPT")
-plt.loglog(C[:,0], Plin, label="CLASS")
-plt.loglog(C_lpt[:,0], C_lpt[:,2], label="LPT")
-plt.legend()
-plt.show()
-
-print("k P(k)");
-for i in range(len(C)):
-    k = C[i,0]
-    print(k, C[i,2], C_lpt[i,2], Plin[i]);
+# #Compute the power spectra
+# Nhalf = int(N/2)+1
+# mask = np.ones((N,N,Nhalf))
+# # C_lpt = compute_PS(grid_lpt, N, L, z_f, mask, True)
+# C = compute_PS(grid, N, L, z_f, mask, False)
+# C_lpt = np.zeros_like(C)
+# k = C[:,0]
+#
+# #Cut off high k modes
+# C = C[k<1,:]
+# C_lpt = C_lpt[k<1,:]
+#
+# #Retrieve the linear power spectrum at these points
+# Plin = np.interp(C[:,0], kvec, Pvec) * (D_f/D_0)**2
+#
+# #Plot the power spectrum
+# plt.loglog(C[:,0], C[:,2], label="SPT")
+# plt.loglog(C[:,0], Plin, label="CLASS")
+# plt.loglog(C_lpt[:,0], C_lpt[:,2], label="LPT")
+# plt.legend()
+# plt.show()
+#
+# print("k P(k)");
+# for i in range(len(C)):
+#     k = C[i,0]
+#     print(k, C[i,2], C_lpt[i,2], Plin[i]);

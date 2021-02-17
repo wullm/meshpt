@@ -40,4 +40,10 @@ int generate_spatial_factors_at_n_EdS(struct spatial_factor_table *sft,
                                       struct coeff_table *spatial_coeffs,
                                       const struct coeff_table *time_coeffs,
                                       int n, double time, double k_cutoff);
+
+int aggregate_factors_at_n_EdS(struct spatial_factor_table *sft,
+                               const struct time_factor_table *tft,
+                               struct coeff_table *spatial_coeffs,
+                               const struct coeff_table *time_coeffs, int n,
+                               double time, double *density, double *flux);
 #endif

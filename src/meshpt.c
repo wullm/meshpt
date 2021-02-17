@@ -226,12 +226,12 @@ int run_meshpt(int N, double boxlen, void *gridv, int nk, void *kvecv,
     free(load2);
 
     /* Retrieve the computed values */
-    int n = 3;
+    int n = 2;
     for (int i = 0; i < time_factors.N_t; i++) {
         double t = time_factors.time_sampling[i];
 
-        int new1 = find_coeff_index(&time_coefficients, 'c', n, 2);
-        int new2 = find_coeff_index(&time_coefficients, 'c', n, 3);
+        int new1 = find_coeff_index(&time_coefficients, 'c', n, 0);
+        int new2 = find_coeff_index(&time_coefficients, 'c', n, 1);
 
         double a1 = time_factors.table[new1 * time_factors.N_t + i];
         double a2 = time_factors.table[new2 * time_factors.N_t + i];
@@ -239,7 +239,7 @@ int run_meshpt(int N, double boxlen, void *gridv, int nk, void *kvecv,
         double b1 = time_factors.ic_factor[new1];
         double b2 = time_factors.ic_factor[new2];
 
-        printf("%f %f %f %f %f\n", t, a1, a2, b1, b2);
+        // printf("%f %f %f %f %f\n", t, a1, a2, b1, b2);
         // printf("%f %f %f %f\n", t, a1, a2, (a1 + a2));
     }
 
