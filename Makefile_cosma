@@ -1,0 +1,46 @@
+#Compiler options
+GCC = icc
+
+#Libraries
+INI_PARSER = parser/minIni.o
+STD_LIBRARIES = -lm
+FFTW_LIBRARIES = -lfftw3
+HDF5_LIBRARIES = -lhdf5
+GSL_LIBRARIES = -lgsl -lgslcblas
+
+GSL_INCLUDES =
+
+HDF5_INCLUDES += -I/usr/lib64 -L/usr/lib64 -I/cosma/local/gcc/7.3.0/lib64/ -L/cosma/local/gcc/7.3.0/lib64/ -I/cosma/local/parallel-hdf5/intel_2018_intel_mpi_2018/1.10.3/lib -L/cosma/local/parallel-hdf5/intel_2018_intel_mpi_2018/1.10.3/lib -I/cosma/local/parallel-hdf5/intel_2018_intel_mpi_2018/1.10.3/include
+HDF5_LIBRARIES +=
+
+HDF5_INCLUDES += -I/cosma/local/gcc/7.3.0/include -I/cosma/local/parallel-hdf5/intel_2018_intel_mpi_2018/1.10.3/include
+HDF5_LIBRARIES += -L/cosma/local/parmetis/intel_2018_intel_mpi_2018/4.0.3/lib -L/cosma/local/gcc/7.3.0/lib64/ -Wl,-rpath=/cosma/local/gcc/7.3.0/lib64/   -lm
+
+#Putting it together
+INCLUDES = $(HDF5_INCLUDES) $(GSL_INCLUDES)
+# $(INI_PARSER)
+LIBRARIES = $(STD_LIBRARIES) $(FFTW_LIBRARIES) $(HDF5_LIBRARIES) $(GSL_LIBRARIES)
+CFLAGS = -Wall -Wshadow -fopenmp -march=native -Ofast -fPIC
+
+OBJECTS = lib/*.o
+
+all:
+	# make minIni
+	mkdir -p lib
+	$(GCC) src/random.c -c -o lib/random.o $(INCLUDES) $(CFLAGS)
+	$(GCC) src/grf.c -c -o lib/grf.o $(INCLUDES) $(CFLAGS)
+	$(GCC) src/fft.c -c -o lib/fft.o $(INCLUDES) $(CFLAGS)
+	$(GCC) src/indices.c -c -o lib/indices.o $(INCLUDES) $(CFLAGS)
+	$(GCC) src/time_factors.c -c -o lib/time_factors.o $(INCLUDES) $(CFLAGS)
+	$(GCC) src/spatial_factors.c -c -o lib/spatial_factors.o $(INCLUDES) $(CFLAGS)
+	$(GCC) src/spatial_cache.c -c -o lib/spatial_cache.o $(INCLUDES) $(CFLAGS)
+	$(GCC) src/spatial_operations.c -c -o lib/spatial_operations.o $(INCLUDES) $(CFLAGS)
+	$(GCC) src/meshpt.c -o meshpt $(INCLUDES) $(OBJECTS) $(LIBRARIES) $(CFLAGS)
+
+	$(GCC) src/meshpt.c -o meshpt.so -shared $(INCLUDES) $(OBJECTS) $(LIBRARIES) $(CFLAGS) $(LDFLAGS)
+
+	# make analyse_tools
+
+format:
+	clang-format-10 -style="{BasedOnStyle: LLVM, IndentWidth: 4, AlignConsecutiveMacros: true, IndentPPDirectives: AfterHash}" -i src/*.c include/*.h
+	astyle -i src/*.c include/*.h
