@@ -147,7 +147,7 @@ int fetch_grid(struct spatial_factor_table *t, double *box, int index) {
     } else {
         char fname[50];
         sprintf(fname, "cache/cache_%03d_%06d.h5", index, t->unique);
-        printf("We laden index %d (%d).\n", index, t->read_outs[index]);
+        printf("[Cache] Loading index %d (%d).\n", index, t->read_outs[index]);
         disk_fetch_grid(box, fname);
     }
 
