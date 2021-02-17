@@ -44,7 +44,7 @@ int generate_spatial_factors_at_n_EdS(struct spatial_factor_table *sft,
                                       const struct time_factor_table *tft,
                                       struct coeff_table *spatial_coeffs,
                                       const struct coeff_table *time_coeffs,
-                                      int n, double time) {
+                                      int n, double time, double k_cutoff) {
     if (n < 2)
         return 0;
 
@@ -108,12 +108,10 @@ int generate_spatial_factors_at_n_EdS(struct spatial_factor_table *sft,
     fftw_plan c2r1 = fftw_plan_dft_c2r_3d(N, N, N, fbox, total, FFTW_ESTIMATE);
 
     /* Fourier transform the incoming grids */
-    int cutoff = 0;
-    if (cutoff) {
+    if (k_cutoff > 0) {
         fft_execute(r2c1);
         fft_normalize_r2c(fbox, N, boxlen);
-        double k_max = (4. / 3.) * 0.6737;
-        double R_filter = (10 / 0.6737);
+        double k_max = (4. / 3.) * k_cutoff;
         fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass, &k_max);
         fft_execute(c2r1);
         fft_normalize_c2r(total, N, boxlen);
@@ -144,12 +142,10 @@ int generate_spatial_factors_at_n_EdS(struct spatial_factor_table *sft,
     fftw_plan c2r2 = fftw_plan_dft_c2r_3d(N, N, N, fbox, total, FFTW_ESTIMATE);
 
     /* Fourier transform the incoming grids */
-    cutoff = 0;
-    if (cutoff) {
+    if (k_cutoff > 0) {
         fft_execute(r2c2);
         fft_normalize_r2c(fbox, N, boxlen);
-        double k_max = (4. / 3.) * 0.6737;
-        double R_filter = (10 / 0.6737);
+        double k_max = (4. / 3.) * k_cutoff;
         fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass, &k_max);
         fft_execute(c2r2);
         fft_normalize_c2r(total, N, boxlen);
@@ -187,7 +183,7 @@ int generate_spatial_factors_at_n(struct spatial_factor_table *sft,
                                   const struct time_factor_table *tft,
                                   struct coeff_table *spatial_coeffs,
                                   const struct coeff_table *time_coeffs, int n,
-                                  double time) {
+                                  double time, double k_cutoff) {
     if (n < 2)
         return 0;
 
@@ -285,9 +281,8 @@ int generate_spatial_factors_at_n(struct spatial_factor_table *sft,
                 fftw_destroy_plan(r2c);
 
                 /* Apply k-cutoff */
-                int cutoff = 0;
-                if (cutoff) {
-                    double k_max = (4. / 3.) * 0.6737;
+                if (k_cutoff > 0) {
+                    double k_max = (4. / 3.) * k_cutoff;
                     fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass,
                                      &k_max);
                 }
@@ -422,9 +417,8 @@ int generate_spatial_factors_at_n(struct spatial_factor_table *sft,
                 fftw_destroy_plan(r2c);
 
                 /* Apply k-cutoff */
-                int cutoff = 0;
-                if (cutoff) {
-                    double k_max = (4. / 3.) * 0.6737;
+                if (k_cutoff > 0) {
+                    double k_max = (4. / 3.) * k_cutoff;
                     fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass,
                                      &k_max);
                 }

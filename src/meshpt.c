@@ -28,34 +28,20 @@
 
 #include "../include/meshpt.h"
 
-int run_meshpt(int N, double boxlen, double Omega_m, int nk, void *gridv,
-               void *kvecv, void *Pvecv, int nz, void *zvecv, void *Dvecv,
-               void *fvecv, void *Omega21v, void *Omega22v, int N_SPT,
-               double z_ini, double z_final) {
+int run_meshpt(int N, double boxlen, void *gridv, int nk, void *kvecv,
+               void *sqrtPvecv, int nz, void *logDvecv, void *Omega21v,
+               void *Omega22v, int N_SPT, double D_ini, double D_final,
+               double k_cutoff) {
 
     /* The output grid */
     double *grid = (double *)gridv;
 
     /* Memory block for the input data */
     double *kvec = (double *)kvecv;
-    double *Pvec = (double *)Pvecv;
-    double *zvec = (double *)zvecv;
-    double *Dvec = (double *)Dvecv;
-    double *fvec = (double *)fvecv;
-    double *Omega21 = (double *)Omega21v;
-    double *Omega22 = (double *)Omega22v;
-
-    /* Compute square root of the power spectrun */
-    double *sqrtPvec = malloc(nk * sizeof(double));
-    for (int i = 0; i < nk; i++) {
-        sqrtPvec[i] = sqrt(Pvec[i]);
-    }
-
-    /* Compute log of growth factor, which will be used as time variable */
-    double *logDvec = malloc(nz * sizeof(double));
-    for (int i = 0; i < nz; i++) {
-        logDvec[i] = log(Dvec[i]);
-    }
+    double *sqrtPvec = (double *)sqrtPvecv;
+    double *logDvec = (double *)logDvecv;
+    double *Omega_21vec = (double *)Omega21v;
+    double *Omega_22vec = (double *)Omega22v;
 
     /* MeshPT structs */
     struct coeff_table time_coefficients;
@@ -63,36 +49,31 @@ int run_meshpt(int N, double boxlen, double Omega_m, int nk, void *gridv,
     struct time_factor_table time_factors;
     struct spatial_factor_table space_factors;
 
-    /* Initialize power spectrum interpolation sline */
+    /* Initialize power spectrum interpolation spline */
     struct strooklat Pspline = {kvec, nk};
     init_strooklat_spline(&Pspline, 100);
 
-    /* Initialize a spline for the time variable */
+    /* Initialize a spline for the time variable (log of growth factor D) */
     struct strooklat spline = {logDvec, nz};
     init_strooklat_spline(&spline, 100);
 
-    /* Table lengths */
-    int min_length = 10000;
+    /* Index table lengths */
+    int min_length = 10000; // number of coefficients
     int cache_length = 4;
     int timesteps = 100;
 
     /* Starting and ending times */
-    double a_ini = 1. / (1 + z_ini);
-    double a_final = 1. / (1 + z_final);
-    double t_i = log(a_ini);
-    double t_f = log(a_final);
+    double t_i = log(D_ini);
+    double t_f = log(D_final);
 
-    printf("%f %f\n", t_i, t_f);
-    printf("Omega_m: %f\n", Omega_m);
-
-    /* Store a grid */
+    /* Initialize the random number generator */
     int s = 101;
     rng_state seed = rand_uint64_init(s);
 
     /* A unique number to prevent filename clashes */
     int unique = (int)(sampleUniform(&seed) * 1e6);
 
-    /* Initialize the tables */
+    /* Initialize the coefficient tables */
     init_coeff_table(&time_coefficients, min_length);
     init_coeff_table(&space_coefficients, min_length);
     init_time_factor_table(&time_factors, timesteps, min_length, t_i, t_f);
@@ -106,24 +87,20 @@ int run_meshpt(int N, double boxlen, double Omega_m, int nk, void *gridv,
     int Omega_22 = add_coeff(&time_coefficients, 'O', 2, 2);
     time_factors.index_Om_11 = Omega_11;
 
-    /* For Einstein-de Sitter, it's just constant */
+    /* For Einstein-de Sitter, but we use the user-specified arrays */
     for (int i = 0; i < time_factors.N_t; i++) {
         double t = time_factors.time_sampling[i];
 
-        double Omega21_z = strooklat_interp(&spline, Omega21, t);
-        double Omega22_z = strooklat_interp(&spline, Omega22, t);
+        double Omega21_z = strooklat_interp(&spline, Omega_21vec, t);
+        double Omega22_z = strooklat_interp(&spline, Omega_22vec, t);
 
         time_factors.table[Omega_11 * time_factors.N_t + i] = 0.;
         time_factors.table[Omega_12 * time_factors.N_t + i] = -1.;
         time_factors.table[Omega_21 * time_factors.N_t + i] = Omega21_z;
         time_factors.table[Omega_22 * time_factors.N_t + i] = Omega22_z;
-        // time_factors.table[Omega_21 * time_factors.N_t + i] = 0;
-        // time_factors.table[Omega_22 * time_factors.N_t + i] = -1;
-
-        // printf("%f %f\n", Omega21_z, Omega22_z);
     }
 
-    /* Fill in the first time factor c_{1,0} = d_{1,0} = D(t) */
+    /* Fill in the first time factor c_{1,0} = d_{1,0} = 1 */
     int index1 = add_coeff(&time_coefficients, 'c', 1, 0);
     int index2 = add_coeff(&time_coefficients, 'd', 1, 0);
 
@@ -144,16 +121,14 @@ int run_meshpt(int N, double boxlen, double Omega_m, int nk, void *gridv,
     generate_complex_grf(fbox, N, boxlen, &seed);
     enforce_hermiticity(fbox, N, boxlen);
 
-    /* Apply the interpolated power spectrum */
+    /* Apply the interpolated power spectrum to the Gaussian field */
     struct spline_params sp = {&Pspline, sqrtPvec};
     fft_apply_kernel(fbox, fbox, N, boxlen, kernel_sqrt_power_spline, &sp);
 
-    int cutoff = 0;
-
     /* Apply a k-cutoff to address UV divergences */
-    if (cutoff) {
-        double k_max = 1.0 * 0.6737;
-        fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass, &k_max);
+    if (k_cutoff > 0) {
+        printf("The cutoff is %f\n", k_cutoff);
+        fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass, &k_cutoff);
     }
 
     /* Fourier transform the grid */
@@ -193,11 +168,10 @@ int run_meshpt(int N, double boxlen, double Omega_m, int nk, void *gridv,
     print_coefficients(&time_coefficients);
 
     /* Generate the higher order spatial factors */
-    double a_begin = log(a_final);
     for (int n = 2; n <= N_SPT; n++) {
         generate_spatial_factors_at_n(&space_factors, &time_factors,
                                       &space_coefficients, &time_coefficients,
-                                      n, a_begin);
+                                      n, t_f, k_cutoff);
     }
 
     /* Compute the aggregate fields */
@@ -211,8 +185,8 @@ int run_meshpt(int N, double boxlen, double Omega_m, int nk, void *gridv,
 
     for (int n = 1; n <= N_SPT; n++) {
         aggregate_factors_at_n(&space_factors, &time_factors,
-                               &space_coefficients, &time_coefficients, n,
-                               a_begin, density, flux);
+                               &space_coefficients, &time_coefficients, n, t_f,
+                               density, flux);
 
         char density_fname[50];
         char flux_fname[50];
@@ -274,11 +248,10 @@ int run_meshpt(int N, double boxlen, double Omega_m, int nk, void *gridv,
     free_coeff_table(&space_coefficients);
     free_time_factor_table(&time_factors);
     free_spatial_factor_table(&space_factors);
+
+    /* Free the splines */
     free_strooklat_spline(&Pspline);
     free_strooklat_spline(&spline);
-
-    free(sqrtPvec);
-    free(logDvec);
 
     return 0;
 }
