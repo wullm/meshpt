@@ -196,6 +196,9 @@ int run_meshpt(int N, double boxlen, void *gridv, int nk, void *kvecv,
 
         disk_store_grid(N, boxlen, density, density_fname);
         disk_store_grid(N, boxlen, flux, flux_fname);
+
+        printf("Exported density grid to %s.\n", density_fname);
+        printf("Exported flux density grid to %s.\n", flux_fname);
     }
 
     /* Copy the full nonlinear density field into the output array */

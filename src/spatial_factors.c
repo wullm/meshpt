@@ -484,7 +484,8 @@ int aggregate_factors_at_n(struct spatial_factor_table *sft,
         double Dn = exp(n * time);
         double prefactor = interp_time_factor(tft, time, time_index) * Dn;
 
-        // printf("aggregate prefactor %f %f %f\n", prefactor, Dn, prefactor / Dn);
+        // printf("aggregate prefactor %f %f %f\n", prefactor, Dn, prefactor /
+        // Dn);
 
         /* Fetch the grid */
         fetch_grid(sft, input, space_index);
@@ -505,7 +506,8 @@ int aggregate_factors_at_n(struct spatial_factor_table *sft,
         double Dn = exp(n * time);
         double prefactor = interp_time_factor(tft, time, time_index) * Dn;
 
-        // printf("aggregate prefactor %f %f %f\n", prefactor, Dn, prefactor / Dn);
+        // printf("aggregate prefactor %f %f %f\n", prefactor, Dn, prefactor /
+        // Dn);
 
         /* Fetch the grid */
         fetch_grid(sft, input, space_index);
@@ -541,7 +543,8 @@ int aggregate_factors_at_n_EdS(struct spatial_factor_table *sft,
         double Dn = exp(n * time);
         double prefactor = Dn;
 
-        // printf("aggregate prefactor %f %f %f\n", prefactor, Dn, prefactor / Dn);
+        // printf("aggregate prefactor %f %f %f\n", prefactor, Dn, prefactor /
+        // Dn);
 
         /* Fetch the grid */
         fetch_grid(sft, input, space_index);
@@ -561,7 +564,8 @@ int aggregate_factors_at_n_EdS(struct spatial_factor_table *sft,
         double Dn = exp(n * time);
         double prefactor = Dn;
 
-        // printf("aggregate prefactor %f %f %f\n", prefactor, Dn, prefactor / Dn);
+        // printf("aggregate prefactor %f %f %f\n", prefactor, Dn, prefactor /
+        // Dn);
 
         /* Fetch the grid */
         fetch_grid(sft, input, space_index);
