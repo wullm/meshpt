@@ -27,6 +27,7 @@ OBJECTS = lib/*.o
 all:
 	# make minIni
 	mkdir -p lib
+	mkdir -p cache
 	$(GCC) src/random.c -c -o lib/random.o $(INCLUDES) $(CFLAGS)
 	$(GCC) src/grf.c -c -o lib/grf.o $(INCLUDES) $(CFLAGS)
 	$(GCC) src/fft.c -c -o lib/fft.o $(INCLUDES) $(CFLAGS)
