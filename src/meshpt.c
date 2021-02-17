@@ -31,7 +31,7 @@
 int run_meshpt(int N, double boxlen, void *gridv, int nk, void *kvecv,
                void *sqrtPvecv, int nz, void *logDvecv, void *Omega21v,
                void *Omega22v, int N_SPT, double D_ini, double D_final,
-               double k_cutoff) {
+               double k_cutoff, char *output_dir) {
 
     /* The output grid */
     double *grid = (double *)gridv;
@@ -69,6 +69,8 @@ int run_meshpt(int N, double boxlen, void *gridv, int nk, void *kvecv,
     /* Initialize the random number generator */
     int s = 101;
     rng_state seed = rand_uint64_init(s);
+
+    printf("The output diretory is '%s'.\n", output_dir);
 
     /* A unique number to prevent filename clashes */
     int unique = (int)(sampleUniform(&seed) * 1e6);
@@ -191,8 +193,8 @@ int run_meshpt(int N, double boxlen, void *gridv, int nk, void *kvecv,
         char density_fname[50];
         char flux_fname[50];
 
-        sprintf(density_fname, "density_%d.h5", n);
-        sprintf(flux_fname, "flux_%d.h5", n);
+        sprintf(density_fname, "%s/density_%d.h5", output_dir, n);
+        sprintf(flux_fname, "%s/flux_%d.h5", output_dir, n);
 
         disk_store_grid(N, boxlen, density, density_fname);
         disk_store_grid(N, boxlen, flux, flux_fname);

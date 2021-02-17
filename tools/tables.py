@@ -113,6 +113,9 @@ h = 0.67
 Ocdm = 0.26
 Ob = 0.05
 
+#The output directory for this run
+output_dir = "output"
+
 #Grid dimensions
 N = 256
 #Physical dimensions of the box
@@ -163,10 +166,12 @@ c_sqrtPvec = ctypes.c_void_p(sqrtPvec.ctypes.data);
 c_logDvec = ctypes.c_void_p(logDvec.ctypes.data);
 c_Omega_21 = ctypes.c_void_p(Omega_21.ctypes.data);
 c_Omega_22 = ctypes.c_void_p(Omega_22.ctypes.data);
+c_outdir = ctypes.c_char_p(output_dir.encode('utf-8'));
 
 #Run MeshPT
 lib.run_meshpt(c_N, c_L, c_grid, c_nk, c_kvec, c_sqrtPvec, c_nz, c_logDvec,
-               c_Omega_21, c_Omega_22, c_N_SPT, c_D_i, c_D_f, c_k_cutoff)
+               c_Omega_21, c_Omega_22, c_N_SPT, c_D_i, c_D_f, c_k_cutoff,
+               c_outdir)
 
 #Show a slice of the output density field
 plt.imshow(grid[100:120].mean(axis=0), cmap="magma")
