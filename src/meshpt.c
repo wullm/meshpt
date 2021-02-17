@@ -158,7 +158,7 @@ int run_meshpt(int N, double boxlen, void *gridv, int nk, void *kvecv,
 
     /* Generate the higher order time factors */
     for (int n = 2; n <= N_SPT; n++) {
-        generate_time_factors_at_n(&time_factors, &time_coefficients, n, EdS);
+        generate_time_factors_at_n(&time_factors, &time_coefficients, n, RD);
     }
 
     /* Compute the derivatives */

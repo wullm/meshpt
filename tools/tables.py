@@ -3,6 +3,10 @@ import ctypes
 import numpy as np
 from matplotlib import pyplot as plt
 
+#Run MeshPT using input tables
+PowData = np.loadtxt("PowData.txt")
+CosmoData = np.loadtxt("CosmoData.txt")
+
 #Compute the power spectrum
 def compute_PS(grid, N, L, z, mask, defilter):
     #Half the grid length rounded down
@@ -87,6 +91,20 @@ def compute_PS(grid, N, L, z, mask, defilter):
 #The MeshPT library
 lib = ctypes.cdll.LoadLibrary('./meshpt.so')
 
+#Unpack the data
+kvec = PowData[:,0].astype(np.double)
+Pvec = PowData[:,1].astype(np.double)
+sqrtPvec = np.sqrt(Pvec)
+zvec = CosmoData[:,0].astype(np.double)
+Dvec = CosmoData[:,1].astype(np.double)
+Omega_21 = CosmoData[:,2].astype(np.double)
+Omega_22 = CosmoData[:,3].astype(np.double)
+logDvec = np.log(Dvec)
+
+#Lengths of the vectors
+nk = len(kvec)
+nz = len(zvec)
+
 #We use Mpc and Gyr (no h)
 speed_of_light = 306.601394 # Mpc/Gyr
 
@@ -110,42 +128,13 @@ z_f = 40
 z_lin = 0
 
 #Desired order in perturbation theory
-N_SPT = 1
-
-#Do the linear theory calculation with CLASS
-params = {'output': 'mPk,dTk',
-          'P_k_max_1/Mpc': 10,
-          # 'N_ncdm': 1,
-          # 'm_ncdm': 0.05,
-          # 'deg_ncdm': 3,
-          'z_pk': 40,
-          'h': h,
-          'Omega_cdm': Ocdm,
-          'Omega_b': Ob}
-cosmo = Class()
-cosmo.set(params)
-cosmo.compute()
-
-#Derive value of Omega_m density
-Omega_m = cosmo.Om_m(0); #redshift zero
-
-#Prepare logarithmically spaced array of wavenumbers
-kvec = np.exp(np.log(10) * np.arange(-5, 1, 0.1));
-nk = len(kvec)
-
-#Interpolate the linear theory power spectrum
-Pvec = np.zeros(nk);
-for i in range(nk):
-    Pvec[i] = cosmo.pk_lin(kvec[i], z_lin);
-
-#Store the linear power spectrum data as text file (before rescaling!)
-PowData = np.array([kvec, Pvec])
-np.savetxt("PowData.txt", PowData.T, header="k [1/Mpc] Pk [Mpc^3]")
+N_SPT = 3
 
 #Perform rescaling if necessary
-D_0 = cosmo.scale_independent_growth_factor(0)
-D_f = cosmo.scale_independent_growth_factor(z_f)
-D_lin = cosmo.scale_independent_growth_factor(z_lin)
+D_0 = np.interp(0, zvec, Dvec)
+D_f = np.interp(z_f, zvec, Dvec)
+D_i = np.interp(z_i, zvec, Dvec)
+D_lin = np.interp(z_lin, zvec, Dvec)
 print("D_0: ", D_0)
 print("D_f: ", D_f)
 print("D_lin: ", D_lin)
@@ -154,83 +143,12 @@ if (not z_lin == 0):
     print("Rescaling the linear theory power spectrum")
     Pvec *= (D_0 / D_lin)**2
 
-#Get background quantities from CLASS (reverse the order of the arrays)
-background = cosmo.get_background()
-bg_t = background['proper time [Gyr]'][::-1]
-bg_H = background['H [1/Mpc]'][::-1]
-bg_D = background['gr.fac. D'][::-1]
-bg_f = background['gr.fac. f'][::-1]
-bg_z = background['z'][::-1]
-bg_a = 1./(1+bg_z)
-bg_rho = background['(.)rho_tot'][::-1]
-bg_p = background['(.)p_tot'][::-1]
-
-#Size of arrays of background quantities
-nz = 1000
-zmax = max(1000, z_f * 1.05, z_i * 1.05)
-zmin = 0
-
-#Curvature parameter
-K = -cosmo.Omega0_k() * cosmo.Hubble(0)**2
-
-#Compute conformal derivative of the Hubble rate
-bg_H_prime = -1.5 * (bg_rho + bg_p) * bg_a + K / bg_a
-bg_H_dot = bg_H_prime / bg_a
-bg_Hdot_over_H2 = bg_H_dot / bg_H**2
-
-#Normalize the growth factor
-# z_norm = z_f
-# D_norm = cosmo.scale_independent_growth_factor(z_norm)
-# a_norm = 1./(1+z_norm)
-# bg_D = bg_D/D_norm
-
-#Compute central difference derivative of the logarithmic growth rate
-bg_df_dlogD = np.gradient(bg_f) / np.gradient(np.log(bg_D))
-
-#Prepare arrays of background factors
-amax = 1./(1+zmax)
-amin = 1./(1+zmin)
-avec = np.exp(np.linspace(np.log(amin), np.log(amax), nz));
-zvec = 1./avec - 1;
-
-#Interpolate known quantities
-Dvec = np.interp(zvec, bg_z, bg_D)
-fvec = np.interp(zvec, bg_z, bg_f)
-Hvec = np.interp(zvec, bg_z, bg_H) * speed_of_light # 1/Gyr
-df_dlogD = np.interp(zvec, bg_z, bg_df_dlogD)
-Hdot_over_H2 = np.interp(zvec, bg_z, bg_Hdot_over_H2)
-
-#Retrieve matter density paramter
-Omvec = np.zeros(nz)
-
-#Interpolate arrays of background factors
-for i in range(nz):
-    Omvec[i] = cosmo.Om_m(zvec[i])
-
-#Compute the time-dependent entries of the Omega matrix
-Omega_21 = -1.5 * Omvec / fvec**2
-Omega_22 = (2 + Hdot_over_H2 + df_dlogD)/fvec
-
-# #Replace redshifts with transformed growth factors
-# zvec = 1./Dvec - 1
-# D_f = np.interp(z_f, bg_z, bg_D)
-# D_i = np.interp(z_i, bg_z, bg_D)
-# z_f = 1./D_f - 1
-# z_i = 1./D_i - 1
-
-D_f = np.interp(z_f, bg_z, bg_D)
-D_i = np.interp(z_i, bg_z, bg_D)
-
 #Allocate the grid
 grid = np.zeros((N,N,N))
-
-logDvec = np.log(Dvec)
-sqrtPvec = np.sqrt(Pvec)
 
 #Conver types to ctypes
 c_N = ctypes.c_int(N);
 c_L = ctypes.c_double(L);
-c_Omega_m = ctypes.c_double(Omega_m);
 c_nk = ctypes.c_int(nk);
 c_nz = ctypes.c_int(nz);
 c_N_SPT = ctypes.c_int(N_SPT);
@@ -244,10 +162,6 @@ c_logDvec = ctypes.c_void_p(logDvec.ctypes.data);
 c_Omega_21 = ctypes.c_void_p(Omega_21.ctypes.data);
 c_Omega_22 = ctypes.c_void_p(Omega_22.ctypes.data);
 
-#Store the cosmological background tables as text file
-CosmoData = np.array([zvec, Dvec, Omega_21, Omega_22])
-np.savetxt("CosmoData.txt", CosmoData.T, header="z D Omega_21 Omega_22")
-
 #Run MeshPT
 lib.run_meshpt(c_N, c_L, c_grid, c_nk, c_kvec, c_sqrtPvec, c_nz, c_logDvec,
                c_Omega_21, c_Omega_22, c_N_SPT, c_D_i, c_D_f, c_k_cutoff)
@@ -256,6 +170,7 @@ lib.run_meshpt(c_N, c_L, c_grid, c_nk, c_kvec, c_sqrtPvec, c_nz, c_logDvec,
 plt.imshow(grid[100:120].mean(axis=0), cmap="magma")
 plt.show()
 
+#Allocate a grid for the Lagrangian calculation
 grid_lpt = np.zeros((N,N,N))
 c_grid_lpt = ctypes.c_void_p(grid_lpt.ctypes.data);
 
@@ -271,8 +186,7 @@ c_Pvec_LPT_input = ctypes.c_void_p(Pvec_LPT_input.ctypes.data);
 lib.computeNonlinearGrid(c_N, c_L, c_seed, c_nk, c_PFac, c_kvec,
                          c_Pvec_LPT_input, c_grid_lpt);
 
-#Normalize the grids
-# grid = (grid - grid.mean())/grid.mean()
+#Normalize the LPT grid
 grid_lpt = (grid_lpt - grid_lpt.mean())/grid_lpt.mean()
 
 #Compute the power spectra
