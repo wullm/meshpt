@@ -223,6 +223,12 @@ Omega_22 = (2 + Hdot_over_H2 + df_dlogD)/fvec
 # z_f = 1./D_f - 1
 # z_i = 1./D_i - 1
 
+#Compute the a*H*f factor that enters the flux density denominator
+a_f = 1./(1+z_f)
+H_f = np.interp(z_f, zvec, Hvec)
+f_f = np.interp(z_f, zvec, fvec)
+print("aHf(z_f) = ", a_f * H_f * f_f, " (a,H,f) = " ,a_f, H_f, f_f)
+
 D_f = np.interp(z_f, bg_z, bg_D)
 D_i = np.interp(z_i, bg_z, bg_D)
 
@@ -251,8 +257,8 @@ c_Omega_22 = ctypes.c_void_p(Omega_22.ctypes.data);
 c_outdir = ctypes.c_char_p(output_dir.encode('utf-8'));
 
 #Store the cosmological background tables as text file
-CosmoData = np.array([zvec, Dvec, Omega_21, Omega_22])
-np.savetxt("CosmoData.txt", CosmoData.T, header="z D Omega_21 Omega_22")
+CosmoData = np.array([zvec, Dvec, Omega_21, Omega_22, Hvec, fvec])
+np.savetxt("CosmoData.txt", CosmoData.T, header="z D Omega_21 Omega_22 H f")
 
 #Run MeshPT
 lib.run_meshpt(c_N, c_L, c_grid, c_nk, c_kvec, c_sqrtPvec, c_nz, c_logDvec,

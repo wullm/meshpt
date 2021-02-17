@@ -99,6 +99,8 @@ zvec = CosmoData[:,0].astype(np.double)
 Dvec = CosmoData[:,1].astype(np.double)
 Omega_21 = CosmoData[:,2].astype(np.double)
 Omega_22 = CosmoData[:,3].astype(np.double)
+Hvec = CosmoData[:,4].astype(np.double)
+fvec = CosmoData[:,5].astype(np.double)
 logDvec = np.log(Dvec)
 
 #Lengths of the vectors
@@ -126,6 +128,12 @@ k_cutoff = h
 #Initial and final (desired output) redshifts of the SPT calculation
 z_i = 9.5e13
 z_f = 0
+
+#Compute the a*H*f factor that enters the flux density denominator
+a_f = 1./(1+z_f)
+H_f = np.interp(z_f, zvec, Hvec)
+f_f = np.interp(z_f, zvec, fvec)
+print("aHf(z_f) = ", a_f * H_f * f_f, " (a,H,f) = " ,a_f, H_f, f_f)
 
 #Desired redshift of the linear theory power spectrum (can be set equal to z_i or something else for rescaled ICs)
 z_lin = 0
