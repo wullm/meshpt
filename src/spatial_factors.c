@@ -257,8 +257,10 @@ int generate_spatial_factors_at_n(struct spatial_factor_table *sft,
                 // printf("%f %f\n", dest_derivative_1, dest_derivative_2);
 
                 /* Prevent singularities */
-                double inv_1 = (dest_prefactor_1 == 0) ? 0 : 1.0 / dest_prefactor_1;
-                double inv_2 = (dest_prefactor_2 == 0) ? 0 : 1.0 / dest_prefactor_2;
+                double inv_1 =
+                    (dest_prefactor_1 == 0) ? 0 : 1.0 / dest_prefactor_1;
+                double inv_2 =
+                    (dest_prefactor_2 == 0) ? 0 : 1.0 / dest_prefactor_2;
 
                 /* Fetch the input grids */
                 fetch_grid(sft, input1, source_index_1);
@@ -269,9 +271,9 @@ int generate_spatial_factors_at_n(struct spatial_factor_table *sft,
                 grid_product(N, boxlen, input1, input2, result);
 
                 /* Solve for the inverse matrix */
-                double mat[] = {
-                    O_11 + dest_derivative_1 * inv_1 + n, O_12, O_21, O_22 + dest_derivative_2 * inv_2 + n
-                };
+                double mat[] = {O_11 + dest_derivative_1 * inv_1 + n, O_12,
+                                O_21, O_22 + dest_derivative_2 * inv_2 + n
+                               };
                 double mat_inv[4];
                 matrix_inv_2d(mat, mat_inv);
 
@@ -286,7 +288,8 @@ int generate_spatial_factors_at_n(struct spatial_factor_table *sft,
                 int cutoff = 0;
                 if (cutoff) {
                     double k_max = (4. / 3.) * 0.6737;
-                    fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass, &k_max);
+                    fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass,
+                                     &k_max);
                 }
 
                 /* Fourier transform back */
@@ -382,8 +385,10 @@ int generate_spatial_factors_at_n(struct spatial_factor_table *sft,
                 // printf("%f %f\n", dest_derivative_1, dest_derivative_2);
 
                 /* Prevent singularities */
-                double inv_1 = (dest_prefactor_1 == 0) ? 0 : 1.0 / dest_prefactor_1;
-                double inv_2 = (dest_prefactor_2 == 0) ? 0 : 1.0 / dest_prefactor_2;
+                double inv_1 =
+                    (dest_prefactor_1 == 0) ? 0 : 1.0 / dest_prefactor_1;
+                double inv_2 =
+                    (dest_prefactor_2 == 0) ? 0 : 1.0 / dest_prefactor_2;
 
                 /* Fetch the input grids */
                 fetch_grid(sft, input1, source_index_1);
@@ -394,9 +399,9 @@ int generate_spatial_factors_at_n(struct spatial_factor_table *sft,
                 grid_grad_dot(N, boxlen, input1, input2, result);
 
                 /* Solve for the inverse matrix */
-                double mat[] = {
-                    O_11 + dest_derivative_1 * inv_1 + n, O_12, O_21, O_22 + dest_derivative_2 * inv_2 + n
-                };
+                double mat[] = {O_11 + dest_derivative_1 * inv_1 + n, O_12,
+                                O_21, O_22 + dest_derivative_2 * inv_2 + n
+                               };
                 double mat_inv[4];
                 matrix_inv_2d(mat, mat_inv);
 
@@ -420,7 +425,8 @@ int generate_spatial_factors_at_n(struct spatial_factor_table *sft,
                 int cutoff = 0;
                 if (cutoff) {
                     double k_max = (4. / 3.) * 0.6737;
-                    fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass, &k_max);
+                    fft_apply_kernel(fbox, fbox, N, boxlen, kernel_lowpass,
+                                     &k_max);
                 }
 
                 /* Fourier transform back */

@@ -27,7 +27,6 @@ all:
 	$(GCC) src/random.c -c -o lib/random.o $(INCLUDES) $(CFLAGS)
 	$(GCC) src/grf.c -c -o lib/grf.o $(INCLUDES) $(CFLAGS)
 	$(GCC) src/fft.c -c -o lib/fft.o $(INCLUDES) $(CFLAGS)
-	$(GCC) src/power_spline.c -c -o lib/power_spline.o $(INCLUDES) $(CFLAGS)
 	$(GCC) src/indices.c -c -o lib/indices.o $(INCLUDES) $(CFLAGS)
 	$(GCC) src/time_factors.c -c -o lib/time_factors.o $(INCLUDES) $(CFLAGS)
 	$(GCC) src/spatial_factors.c -c -o lib/spatial_factors.o $(INCLUDES) $(CFLAGS)
@@ -42,12 +41,3 @@ all:
 format:
 	clang-format-10 -style="{BasedOnStyle: LLVM, IndentWidth: 4, AlignConsecutiveMacros: true, IndentPPDirectives: AfterHash}" -i src/*.c include/*.h
 	astyle -i src/*.c include/*.h
-
-analyse_tools:
-	cd analyse && make
-
-minIni:
-	cd parser && make
-
-check:
-	cd tests && make

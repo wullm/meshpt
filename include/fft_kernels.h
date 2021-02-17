@@ -21,7 +21,7 @@
 #define FFT_KERNELS_H
 
 // #include "primordial.h"
-#include "power_spline.h"
+#include "strooklat_inline.h"
 
 typedef void (*kernel_func)(struct kernel *the_kernel);
 
@@ -172,6 +172,11 @@ static inline void kernel_power_no_transfer(struct kernel *the_kernel) {
     the_kernel->kern = kern;
 }
 
+struct spline_params {
+    struct strooklat *spline;
+    double *sqrtPower;
+};
+
 /* Multiply by the square root of the interpolated power spectrum */
 static inline void kernel_sqrt_power_spline(struct kernel *the_kernel) {
     double k = the_kernel->k;
@@ -181,16 +186,10 @@ static inline void kernel_sqrt_power_spline(struct kernel *the_kernel) {
         the_kernel->kern = 0.f;
     } else {
         /* Unpack the spline parameters */
-        const struct power_spline *spline =
-            (const struct power_spline *)the_kernel->params;
-
-        /* Find the k index and spacing for this wavevector */
-        int k_index;
-        double u_k;
-        power_spline_find_k(spline, k, &k_index, &u_k);
+        struct spline_params *pars = (struct spline_params *)the_kernel->params;
 
         /* Evaluate the transfer function for this tau and k */
-        the_kernel->kern = sqrt_power_spline_interp(spline, k_index, u_k);
+        the_kernel->kern = strooklat_interp(pars->spline, pars->sqrtPower, k);
     }
 }
 

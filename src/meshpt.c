@@ -28,10 +28,6 @@
 
 #include "../include/meshpt.h"
 
-double D(double eta) {
-    return exp(eta);
-}
-
 int run_meshpt(int N, double boxlen, double Omega_m, int nk, void *gridv,
                void *kvecv, void *Pvecv, int nz, void *zvecv, void *Dvecv,
                void *fvecv, void *Omega21v, void *Omega22v, int N_SPT,
@@ -49,8 +45,13 @@ int run_meshpt(int N, double boxlen, double Omega_m, int nk, void *gridv,
     double *Omega21 = (double *)Omega21v;
     double *Omega22 = (double *)Omega22v;
 
-    /* Compute logarithm of growth factor, which will be used as time variable
-     */
+    /* Compute square root of the power spectrun */
+    double *sqrtPvec = malloc(nk * sizeof(double));
+    for (int i = 0; i < nk; i++) {
+        sqrtPvec[i] = sqrt(Pvec[i]);
+    }
+
+    /* Compute log of growth factor, which will be used as time variable */
     double *logDvec = malloc(nz * sizeof(double));
     for (int i = 0; i < nz; i++) {
         logDvec[i] = log(Dvec[i]);
@@ -63,24 +64,12 @@ int run_meshpt(int N, double boxlen, double Omega_m, int nk, void *gridv,
     struct spatial_factor_table space_factors;
 
     /* Initialize power spectrum interpolation sline */
-    struct power_spline spline = {kvec, Pvec, nk};
-    init_power_spline(&spline, 100);
+    struct strooklat Pspline = {kvec, nk};
+    init_strooklat_spline(&Pspline, 100);
 
-    /* Initialize growth factor interpolation sline */
-    struct power_spline D_spline = {zvec, Dvec, nz};
-    init_power_spline(&D_spline, 100);
-
-    /* Initialize Omega_21 interpolation sline */
-    struct power_spline Omega21_spline = {zvec, Omega21, nz};
-    init_power_spline(&Omega21_spline, 100);
-
-    /* Initialize Omega_22 interpolation sline */
-    struct power_spline Omega22_spline = {zvec, Omega22, nz};
-    init_power_spline(&Omega22_spline, 100);
-
-    /* Initialize log growth factor interpolation sline */
-    struct power_spline f_spline = {zvec, fvec, nz};
-    init_power_spline(&f_spline, 100);
+    /* Initialize a spline for the time variable */
+    struct strooklat spline = {logDvec, nz};
+    init_strooklat_spline(&spline, 100);
 
     /* Table lengths */
     int min_length = 10000;
@@ -120,13 +109,9 @@ int run_meshpt(int N, double boxlen, double Omega_m, int nk, void *gridv,
     /* For Einstein-de Sitter, it's just constant */
     for (int i = 0; i < time_factors.N_t; i++) {
         double t = time_factors.time_sampling[i];
-        int index;
-        double u;
-        double z = 1. / exp(t) - 1;
-        power_spline_find_k(&Omega21_spline, z, &index, &u);
 
-        double Omega21_z = power_spline_interp(&Omega21_spline, index, u);
-        double Omega22_z = power_spline_interp(&Omega22_spline, index, u);
+        double Omega21_z = strooklat_interp(&spline, Omega21, t);
+        double Omega22_z = strooklat_interp(&spline, Omega22, t);
 
         time_factors.table[Omega_11 * time_factors.N_t + i] = 0.;
         time_factors.table[Omega_12 * time_factors.N_t + i] = -1.;
@@ -143,17 +128,6 @@ int run_meshpt(int N, double boxlen, double Omega_m, int nk, void *gridv,
     int index2 = add_coeff(&time_coefficients, 'd', 1, 0);
 
     for (int i = 0; i < time_factors.N_t; i++) {
-        double t = time_factors.time_sampling[i];
-        int index;
-        double u;
-        double z = 1. / exp(t) - 1;
-        power_spline_find_k(&D_spline, z, &index, &u);
-
-        // time_factors.table[index1 * time_factors.N_t + i] =
-        //     power_spline_interp(&D_spline, index, u) / exp(t);
-        // time_factors.table[index2 * time_factors.N_t + i] =
-        //     power_spline_interp(&D_spline, index, u) / exp(t);
-
         time_factors.table[index1 * time_factors.N_t + i] = 1.0;
         time_factors.table[index2 * time_factors.N_t + i] = 1.0;
     }
@@ -171,7 +145,8 @@ int run_meshpt(int N, double boxlen, double Omega_m, int nk, void *gridv,
     enforce_hermiticity(fbox, N, boxlen);
 
     /* Apply the interpolated power spectrum */
-    fft_apply_kernel(fbox, fbox, N, boxlen, kernel_sqrt_power_spline, &spline);
+    struct spline_params sp = {&Pspline, sqrtPvec};
+    fft_apply_kernel(fbox, fbox, N, boxlen, kernel_sqrt_power_spline, &sp);
 
     int cutoff = 0;
 
@@ -299,11 +274,11 @@ int run_meshpt(int N, double boxlen, double Omega_m, int nk, void *gridv,
     free_coeff_table(&space_coefficients);
     free_time_factor_table(&time_factors);
     free_spatial_factor_table(&space_factors);
-    free_power_spline(&spline);
-    free_power_spline(&D_spline);
-    free_power_spline(&f_spline);
-    free_power_spline(&Omega21_spline);
-    free_power_spline(&Omega22_spline);
+    free_strooklat_spline(&Pspline);
+    free_strooklat_spline(&spline);
+
+    free(sqrtPvec);
+    free(logDvec);
 
     return 0;
 }
@@ -328,9 +303,15 @@ int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
     /* Memory block for the output data */
     double *grid = (double *)gridv;
 
+    /* Compute square root of the power spectrun */
+    double *sqrtPvec = malloc(nk * sizeof(double));
+    for (int i = 0; i < nk; i++) {
+        sqrtPvec[i] = sqrt(Pvec[i]);
+    }
+
     /* Initialize power spectrum interpolation sline */
-    struct power_spline spline = {kvec, Pvec, nk};
-    init_power_spline(&spline, 100);
+    struct strooklat Pspline = {kvec, nk};
+    init_strooklat_spline(&Pspline, 100);
 
     /* Seed the random number generator */
     rng_state seed = rand_uint64_init(inseed);
@@ -347,7 +328,8 @@ int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
     enforce_hermiticity(fbox, N, boxlen);
 
     /* Apply the interpolated power spectrum */
-    fft_apply_kernel(fbox, fbox, N, boxlen, kernel_sqrt_power_spline, &spline);
+    struct spline_params sp = {&Pspline, sqrtPvec};
+    fft_apply_kernel(fbox, fbox, N, boxlen, kernel_sqrt_power_spline, &sp);
 
     /* Apply the smoothing filter */
     double R_smooth = 1.0;
@@ -486,7 +468,8 @@ int computeNonlinearGrid(int N, double boxlen, long long inseed, int nk,
     free(psi_z);
 
     /* Clean up the spline */
-    free_power_spline(&spline);
+    free_strooklat_spline(&Pspline);
+    free(sqrtPvec);
 
     return 1;
 }
