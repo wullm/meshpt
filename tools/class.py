@@ -107,13 +107,16 @@ k_cutoff = 0
 
 #Initial and final (desired output) redshifts of the SPT calculation
 z_i = 9.5e13
-z_f = 40
+z_f = 38.5
+
+#Whether to use the general or Einstein-de Sitter functions
+EdS_mode = 0
 
 #Desired redshift of the linear theory power spectrum (can be set equal to z_i or something else for rescaled ICs)
 z_lin = 0
 
 #Desired order in perturbation theory
-N_SPT = 1
+N_SPT = 2
 
 #Do the linear theory calculation with CLASS
 params = {'output': 'mPk,dTk',
@@ -201,6 +204,7 @@ zvec = 1./avec - 1;
 #Interpolate known quantities
 Dvec = np.interp(zvec, bg_z, bg_D)
 fvec = np.interp(zvec, bg_z, bg_f)
+tvec = np.interp(zvec, bg_z, bg_t)
 Hvec = np.interp(zvec, bg_z, bg_H) * speed_of_light # 1/Gyr
 df_dlogD = np.interp(zvec, bg_z, bg_df_dlogD)
 Hdot_over_H2 = np.interp(zvec, bg_z, bg_Hdot_over_H2)
@@ -245,6 +249,7 @@ c_Omega_m = ctypes.c_double(Omega_m);
 c_nk = ctypes.c_int(nk);
 c_nz = ctypes.c_int(nz);
 c_N_SPT = ctypes.c_int(N_SPT);
+c_EdS_mode = ctypes.c_int(EdS_mode);
 c_D_i = ctypes.c_double(D_i);
 c_D_f = ctypes.c_double(D_f);
 c_k_cutoff = ctypes.c_double(k_cutoff);
@@ -263,7 +268,7 @@ np.savetxt("CosmoData.txt", CosmoData.T, header="z D Omega_21 Omega_22 H f")
 #Run MeshPT
 lib.run_meshpt(c_N, c_L, c_grid, c_nk, c_kvec, c_sqrtPvec, c_nz, c_logDvec,
                c_Omega_21, c_Omega_22, c_N_SPT, c_D_i, c_D_f, c_k_cutoff,
-               c_outdir)
+               c_outdir, c_EdS_mode)
 
 #Show a slice of the output density field
 plt.imshow(grid[100:120].mean(axis=0), cmap="magma")

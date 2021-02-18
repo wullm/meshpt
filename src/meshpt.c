@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 
 #include <gsl/gsl_errno.h>
 #include <gsl/gsl_matrix.h>
@@ -28,10 +29,12 @@
 
 #include "../include/meshpt.h"
 
+typedef int (*func_ptr) (void * params, ...);
+
 int run_meshpt(int N, double boxlen, void *gridv, int nk, void *kvecv,
                void *sqrtPvecv, int nz, void *logDvecv, void *Omega21v,
                void *Omega22v, int N_SPT, double D_ini, double D_final,
-               double k_cutoff, char *output_dir) {
+               double k_cutoff, char *output_dir, int fast_EdS_mode) {
 
     /* The output grid */
     double *grid = (double *)gridv;
@@ -169,9 +172,23 @@ int run_meshpt(int N, double boxlen, void *gridv, int nk, void *kvecv,
     /* Print a list of all coefficients */
     print_coefficients(&time_coefficients);
 
+    /* Whether to use the general or Einstein-de Sitter functions */
+    func_ptr generate_spatial_factors;
+    func_ptr aggregate_spatial_factors;
+    if (fast_EdS_mode) {
+        printf("Running fast EdS mode for the spatial factors.\n");
+        generate_spatial_factors = generate_spatial_factors_at_n_EdS;
+        aggregate_spatial_factors = aggregate_factors_at_n_EdS;
+    } else {
+        printf("Running general cosmology mode.\n");
+        generate_spatial_factors = generate_spatial_factors_at_n;
+        aggregate_spatial_factors = aggregate_factors_at_n;
+    }
+
+
     /* Generate the higher order spatial factors */
     for (int n = 2; n <= N_SPT; n++) {
-        generate_spatial_factors_at_n(&space_factors, &time_factors,
+        generate_spatial_factors(&space_factors, &time_factors,
                                       &space_coefficients, &time_coefficients,
                                       n, t_f, k_cutoff);
     }
@@ -186,7 +203,7 @@ int run_meshpt(int N, double boxlen, void *gridv, int nk, void *kvecv,
     memset(flux, 0, N * N * N * sizeof(double));
 
     for (int n = 1; n <= N_SPT; n++) {
-        aggregate_factors_at_n(&space_factors, &time_factors,
+        aggregate_spatial_factors(&space_factors, &time_factors,
                                &space_coefficients, &time_coefficients, n, t_f,
                                density, flux);
 

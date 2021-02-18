@@ -129,6 +129,9 @@ k_cutoff = h
 z_i = 9.5e13
 z_f = 0
 
+#Whether to use the general or Einstein-de Sitter functions
+EdS_mode = 1
+
 #Compute the a*H*f factor that enters the flux density denominator
 a_f = 1./(1+z_f)
 H_f = np.interp(z_f, zvec, Hvec)
@@ -165,6 +168,7 @@ c_L = ctypes.c_double(L);
 c_nk = ctypes.c_int(nk);
 c_nz = ctypes.c_int(nz);
 c_N_SPT = ctypes.c_int(N_SPT);
+c_EdS_mode = ctypes.c_int(EdS_mode);
 c_D_i = ctypes.c_double(D_i);
 c_D_f = ctypes.c_double(D_f);
 c_k_cutoff = ctypes.c_double(k_cutoff);
@@ -179,7 +183,7 @@ c_outdir = ctypes.c_char_p(output_dir.encode('utf-8'));
 #Run MeshPT
 lib.run_meshpt(c_N, c_L, c_grid, c_nk, c_kvec, c_sqrtPvec, c_nz, c_logDvec,
                c_Omega_21, c_Omega_22, c_N_SPT, c_D_i, c_D_f, c_k_cutoff,
-               c_outdir)
+               c_outdir, c_EdS_mode)
 
 #Show a slice of the output density field
 plt.imshow(grid[100:120].mean(axis=0), cmap="magma")
