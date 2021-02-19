@@ -1,4 +1,4 @@
-# meshpt
+# MeshPT
 
 Higher order Eulerian perturbation theory (SPT) on the mesh for cosmologies with time-dependent coefficients.
 
