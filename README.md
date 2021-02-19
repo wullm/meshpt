@@ -12,7 +12,7 @@ Running on command line:
 ./meshpt
 ```
 
-Running with Classy:
+Running with CLASS (classy):
 ```console
 python3 tools/class.py
 ```
